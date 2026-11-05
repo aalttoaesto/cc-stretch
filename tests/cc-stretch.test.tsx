@@ -521,6 +521,21 @@ describe('layout', () => {
     expect(linkAt(rows, 9, 0)).toEqual({ action: 'open', key: 'k' })
   })
 
+  test('never breaks a row at a style change inside a word', async () => {
+    const shown = (text: string, width: number) => layout(text, width).map(row => row.map(run => run.text).join(''))
+    expect(shown(`It merged 3 days ${link('leadIn', 'k', 'ago')}${link('open', 'k', '.')}`, 20)).toEqual(['It merged 3 days', 'ago.'])
+    expect(shown('The run took **12**ms', 15)).toEqual(['The run took', '12ms'])
+    expect(shown('一二三四**五**。', 10)).toEqual(['一二三四', '五。'])
+    // The first frame of opening draws the short form as plain text: no row moves.
+    expect(shown(`Then run the ${link('leadIn', 'k', 'tests')}${link('open', 'k', '.')}`, 18)).toEqual(shown('Then run the tests.', 18))
+  })
+
+  test('moves a styled word whole to the next row, and cuts one wider than a row at its style changes first', async () => {
+    const shown = (text: string, width: number) => layout(text, width).map(row => row.map(run => run.text).join(''))
+    expect(shown('see (https://x.invalid/a)', 22)).toEqual(['see', '(https://x.invalid/a)'])
+    expect(shown('see (https://x.invalid/a)', 16)[0]).toBe('see (')
+  })
+
   test('never lets a code span or a markdown link run over a pressable phrase, as half of one drawn by a growing long form would', async () => {
     const shown = (text: string) => layout(text, 80).map(row => row.map(run => run.text).join('')).join('\n')
     expect(shown(`Run \`npm then ${link('open', 'k', 'merge `main`')}.`)).toBe('Run `npm then merge main.')

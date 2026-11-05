@@ -659,33 +659,70 @@ function wrap(runs: Run[], width: number, first: string, rest: string, isDimLead
     continuations.set(row, { join, lead: used })
   }
 
-  begin(first)
-  for (const run of runs) {
-    for (const text of run.text.split(/( +)/).flatMap(breakables)) {
-      if (text === '') continue
-      if (text.trim() === '') {
-        if (isBare) continue
-        if (used + widthOf(text) <= width) put({ ...run, text })
-        else breakRow(true)
+  // One styled piece of a word, placed on its own: on this row if it fits, else on the next, cut
+  // where the row ends when it is wider than a whole row.
+  const place = (piece: Run) => {
+    let word = piece.text
+    while (word !== '') {
+      if (used + widthOf(word) <= width) {
+        put({ ...piece, text: word })
+        break
+      }
+      if (!isBare) {
+        breakRow()
         continue
       }
-      let word = text
-      while (word !== '') {
-        if (used + widthOf(word) <= width) {
-          put({ ...run, text: word })
-          break
-        }
-        if (!isBare) {
-          breakRow()
-          continue
-        }
-        // A word wider than a whole row is cut where the row ends.
-        const [head, tail] = cut(word, width - used)
-        put({ ...run, text: head })
-        breakRow()
-        word = tail
+      const [head, tail] = cut(word, width - used)
+      put({ ...piece, text: head })
+      breakRow()
+      word = tail
+    }
+  }
+
+  begin(first)
+  // Break points are found in the line's whole text, so a style change inside a word (a link, a code
+  // span, bold, a pressed phrase) is no place to break, and punctuation that never starts a row stays
+  // with the word before it whatever its style. Each piece is then split back across its runs.
+  const whole = runs.map(run => run.text).join('')
+  let runIndex = 0
+  let runAt = 0
+  const stylesOf = (length: number): Run[] => {
+    const pieces: Run[] = []
+    while (length > 0 && runIndex < runs.length) {
+      const run = runs[runIndex] as Run
+      const take = Math.min(length, run.text.length - runAt)
+      if (take > 0) pieces.push({ ...run, text: run.text.slice(runAt, runAt + take) })
+      runAt += take
+      length -= take
+      if (runAt >= run.text.length) {
+        runIndex += 1
+        runAt = 0
       }
     }
+    return pieces
+  }
+  for (const text of whole.split(/( +)/).flatMap(breakables)) {
+    if (text === '') continue
+    const pieces = stylesOf(text.length)
+    if (text.trim() === '') {
+      if (isBare) continue
+      if (used + widthOf(text) <= width) pieces.forEach(put)
+      else breakRow(true)
+      continue
+    }
+    const cells = widthOf(text)
+    if (used + cells <= width) {
+      pieces.forEach(put)
+      continue
+    }
+    if (!isBare && cells <= width - widthOf(rest)) {
+      breakRow()
+      pieces.forEach(put)
+      continue
+    }
+    // A word wider than a whole row breaks at its style changes first, so `(https://…)` keeps its
+    // URL whole where it fits, and is cut where a row ends only where it must be.
+    pieces.forEach(place)
   }
   rows.push(row)
 

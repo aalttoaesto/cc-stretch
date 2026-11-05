@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- A row never breaks inside a word where its style changes, at a link, a code span, bold or the
+  words a press opens. Before, `ago{{.|…}}` could draw its `.` alone at the start of the next row,
+  `**12**ms` could split into `12` and `ms`, Chinese closing punctuation after bold could start a
+  row, and the first frame of opening a stretch could move a pressed word to another row.
+
 ## 0.5.4 — 2026-10-24
 
 - When a stretch's long form ends in a code block and Claude puts the stretch's closing braces on

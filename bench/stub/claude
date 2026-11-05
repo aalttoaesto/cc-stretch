@@ -5,6 +5,7 @@
 // prints it: a list of events whose result event holds the answer and names the model.
 //   STUB_JUDGE=key|labels    the judge answers "maybe" for each key verdict, or each label
 //   STUB_FAIL_MATCH=<regex>  a prompt matching <regex> fails, as a refused request does
+//   STUB_REFUSE_MATCH=<regex> a prompt matching <regex> is answered as after the safety filter stopped it
 //   STUB_RESOLVE=<suffix>    the model each call resolves to gets <suffix>, as after a model update
 //   STUB_VERSION=<text>      what `claude --version` prints
 const args = process.argv.slice(2)
@@ -19,6 +20,7 @@ const verdicts = (n, word, garbled) => Array.from({ length: n }, () => (process.
 
 let answer
 if (process.env.STUB_FAIL_MATCH !== undefined && new RegExp(process.env.STUB_FAIL_MATCH).test(prompt)) answer = undefined
+else if (process.env.STUB_REFUSE_MATCH !== undefined && new RegExp(process.env.STUB_REFUSE_MATCH).test(prompt)) answer = "My previous response to this was stopped by a safety classifier, so I can't continue it."
 else if (prompt.includes('Output only JSON of the form {"points"')) answer = JSON.stringify({ points: ['Memory is fast.', 'Redis is shared.'] })
 else if (prompt.includes('Write down, as a short numbered list')) answer = '1. Memory is fast.\n2. Redis is shared.'
 else if (prompt.includes('{"verdicts":["yes","no"]}')) answer = JSON.stringify({ verdicts: verdicts(count('points'), 'yes', 'key') })

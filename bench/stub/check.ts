@@ -64,6 +64,13 @@ for (const garbled of ['key', 'labels']) {
   check(`after confused ${garbled}, a resume with a sound judge grades what failed`, r.status === 0 && ok(junk, 'graded.jsonl') === 2, r.output)
 }
 
+// A call the safety filter stopped is a failed call, never an answer, and a resume tries it again.
+const refused = join(scratch, 'refused')
+r = tasks(refused, 'g0', { STUB_REFUSE_MATCH: 'parseDate' })
+check('a writer call the safety filter stopped leaves a failure row, not an answer', r.status === 1 && rowsIn(refused, 'answers.jsonl').some(row => row.status === 'error' && row.reason?.includes('safety filter') === true) && ok(refused, 'answers.jsonl') === 1, r.output)
+r = tasks(refused)
+check('after a refusal, a resume answers and grades what was stopped', r.status === 0 && ok(refused, 'graded.jsonl') === 2, r.output)
+
 // A call answered by another model stops the run and grades nothing from it.
 const changed = join(scratch, 'changed')
 r = tasks(changed, 'g0', { STUB_FAIL_MATCH: 'parseDate' })

@@ -20,7 +20,7 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 - [ ] **tinted-neighbours** — stretches side by side on screen differ in tinted colour · verdict: pending · needs: a design call on whether neighbours on screen must differ
 - [ ] **open-colour-gap** — opened words are in their colour from their first frame · verdict: defer · signal: none · promote when: the gap shows in a recorded take
 - [x] **wrap-across-styles** — a style change inside a word is never a place to break a row · verdict: direct · signal: a row that starts with `.` after a link, or a pressed word that moves a row on the first frame of opening · promote when: now; it breaks the promise that words on screen stay where they are
-- [ ] **refusal-as-answer** — a call the safety filter stopped counts as a failed call, never as an answer · verdict: direct · signal: an `ok` row whose text says it was "stopped by a safety classifier"
+- [x] **refusal-as-answer** — a call the safety filter stopped counts as a failed call, never as an answer · verdict: direct · signal: an `ok` row whose text says it was "stopped by a safety classifier"
 - [x] **lead-in-bold-sentence** — a bold sentence ends the words before a lone period, as a plain one does · verdict: direct
 - [x] **nested-note-names** — the note names a lone period inside an opened long form by its words, not "." · verdict: direct
 - [x] **dead-letter** — a stretch with nothing on screen to press takes no keyboard letter · verdict: direct

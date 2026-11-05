@@ -265,12 +265,23 @@ function noteModels(role: Role, found: unknown[]) {
   }
 }
 
+/**
+ * Whether the safety filter stopped a call. As of Claude Code 2.1.304 a stopped reply is tried once
+ * more with a note saying so, and the model's answer to that note comes back as a normal result, so
+ * the events are read for a refusal stop and the text for the answer's own words.
+ */
+function isRefusal(stdout: string, text: string): boolean {
+  if (/"stop_reason"\s*:\s*"refusal"/.test(stdout)) return true
+  return /stopped by (?:a|the) safety classifier/i.test(text)
+}
+
 /** One `claude -p` answer and the models that gave it. Stdin is closed at once, so Claude Code does not wait for piped input. */
 function claude(role: Role, model: string, prompt: string, options: { system?: string; effort?: string } = {}): Promise<{ text: string; models: string[] }> {
   return new Promise((resolve, reject) => {
     const child = execFile('claude', claudeArgs(model, prompt, options), { maxBuffer: 1 << 26, timeout: 900000, cwd: BLANK }, (error, stdout, stderr) => {
       try {
         const answer = resultOf(stdout)
+        if (isRefusal(stdout, answer.text)) throw new Error('stopped by the safety filter')
         const models = answer.models.join(',')
         if ((answeredBy[role] ??= models) !== models) {
           isHalted = true

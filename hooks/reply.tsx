@@ -3,7 +3,7 @@ import type { ClientModule, ClientPointerEvent, ClientSurface, TextProps } from 
 import { grow, lengthOf } from './grow'
 import { continuationOf, hrefAt, isMarkup, isWebLink, layout, link, linkAt, namesOf, openedOf, targetsIn, tint, widthOf, withLeadIns } from './layout'
 import type { Action, OpenedStretch, Row, Run } from './layout'
-import { closeAfter, isLinkable, KEY_SEPARATOR, parse } from './parse'
+import { closeAfter, drawnAs, KEY_SEPARATOR, parse } from './parse'
 import { DEFAULT_LOOK, drawsHighlight, lookProps } from './look'
 import type { Hex } from './contrast'
 import type { DrawnLook } from './look'
@@ -172,9 +172,10 @@ function compose(segments: Segment[], state: State, tints: ReadonlyMap<string, T
       .map(part => (typeof part === 'string' ? part : draw(part)))
       .join('')
   const draw = (stretch: Stretch): string => {
-    if (stretch.long === undefined || !stretch.isClosed) return stretch.short
+    const drawn = drawnAs(stretch)
+    if (drawn === 'text' || stretch.long === undefined) return stretch.short
     // A short form over several lines is drawn open, or as written when its long form is empty.
-    if (!isLinkable(stretch)) return stretch.long.length === 0 ? stretch.short : write(stretch.long)
+    if (drawn === 'open') return stretch.long.length === 0 ? stretch.short : write(stretch.long)
     const colours = tints.get(stretch.key)
     const paint = (word: string) => (colours === undefined || isMarkup(word) ? word : tint(colours.words, word))
     if (state.growth?.key === stretch.key) return grow(stretch.short, stretch.long, easeInOut(state.growth.progress), draw, paint)

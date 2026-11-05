@@ -6,7 +6,7 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 ## Lanes
 
 - [ ] **plugin-folder** — an install copies the plugin, not the repo's dev tools · verdict: direct
-- [ ] **renderers-use-drawn-as** — every renderer draws a stretch the way `drawnAs` says · verdict: direct
+- [x] **renderers-use-drawn-as** — every renderer draws a stretch the way `drawnAs` says · verdict: direct
 - [ ] **keyboard-item-words** — the list rule finds the reply item by the words a reply uses for it · verdict: direct
 - [ ] **judge-controls** — a grading run whose judge misgrades a known answer is refused · verdict: direct
 - [ ] **bench-one-copy** — each prompt, flag list and scoring rule in the bench exists once · verdict: defer · promote when: the README's numbers are next rerun

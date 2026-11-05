@@ -2,7 +2,7 @@ import { atom, memberOf, read, update } from 'claude-code'
 import type { ClassicEventOf, ClassicResultOf, EngineInterface, Register, RenderInput, RenderNode, SessionMessage } from 'claude-code'
 
 import { GUIDE } from './guide'
-import { closeAfter, codeSpan, hideLongForms, isLinkable, isOpenable, KEY_SEPARATOR, newStreamState, paragraphsOf, parentOf, parse, stretches } from './parse'
+import { closeAfter, codeSpan, drawnAs, hideLongForms, isLinkable, KEY_SEPARATOR, newStreamState, paragraphsOf, parentOf, parse, stretches } from './parse'
 import type { Segment, StreamState, Stretch } from './parse'
 import { isWebLink, namesOf, openedOf, targetsIn } from './layout'
 import type { Action, OpenedStretch } from './layout'
@@ -712,9 +712,10 @@ function linkedMarkdown(parts: Segment[], open: readonly string[], all: Stretch[
   return parts
     .map(part => {
       if (typeof part === 'string') return part
-      if (!isOpenable(part) || part.long === undefined) return part.short
+      const drawn = drawnAs(part)
+      if (drawn === 'text' || part.long === undefined) return part.short
       // A short form over several lines is drawn open, or as written when its long form is empty.
-      if (!isLinkable(part)) return part.long.length === 0 ? part.short : linkedMarkdown(part.long, open, all, links)
+      if (drawn === 'open') return part.long.length === 0 ? part.short : linkedMarkdown(part.long, open, all, links)
       const index = all.indexOf(part)
       if (open.includes(part.key)) {
         const close = `${HREF}close/${index}`
@@ -746,9 +747,14 @@ function labelOf(short: string): string {
   return label + plain(short.slice(from))
 }
 
-/** A reply with every stretch drawn as its long form. */
+/** A reply with every stretch that can open drawn as its long form; one still streaming shows its short form, as elsewhere. */
 function writeOpen(parts: Segment[]): string {
-  return parts.map(part => (typeof part === 'string' ? part : part.long === undefined ? part.short : writeOpen(part.long))).join('')
+  return parts
+    .map(part => {
+      if (typeof part === 'string') return part
+      return drawnAs(part) === 'text' || part.long === undefined ? part.short : writeOpen(part.long)
+    })
+    .join('')
 }
 
 function isSameStretch(a: OpenedStretch, b: OpenedStretch): boolean {

@@ -6,6 +6,8 @@
   words a press opens. Before, `ago{{.|…}}` could draw its `.` alone at the start of the next row,
   `**12**ms` could split into `12` and `ms`, Chinese closing punctuation after bold could start a
   row, and the first frame of opening a stretch could move a pressed word to another row.
+- On the main screen, where every stretch is drawn open, a stretch still streaming shows its short
+  form, as it does in fullscreen and the desktop app. Before, it showed its unfinished long form.
 
 ## 0.5.4 — 2026-10-24
 

@@ -1235,6 +1235,19 @@ test('on the main screen, every stretch is drawn open, and the first such reply 
   await again.unmount()
 })
 
+test('a stretch still streaming shows its short form in the terminal, on the main screen and in the desktop app alike', async $ => {
+  const text = 'It starts {{short words|long words'
+  const terminal = await mountReply($, FULLSCREEN, text)
+  expect(await textIn(terminal)).toBe('It starts short words')
+  await terminal.unmount()
+  for (const [viewport, surface] of [[MAIN_SCREEN, 'terminal'], [FULLSCREEN, 'desktop']] as const) {
+    const ui = await mountReply($, viewport, text, surface, `reply-${surface}`)
+    expect(await shown(ui)).toContain('It starts short words')
+    expect(await shown(ui)).not.toContain('long words')
+    await ui.unmount()
+  }
+})
+
 test('in fullscreen or the phone app, no reply says why stretches are open', async $ => {
   const ui = await mountReply($, FULLSCREEN)
   expect(await hasNote(ui)).toBe(false)

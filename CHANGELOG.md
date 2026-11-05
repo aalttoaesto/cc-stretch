@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Open or close a whole reply at once. With the letters up (alt+↓ or ctrl+↓ to open, alt+↑ or
+  ctrl+↑ to close), typing `.` opens, or closes, every stretch in the replies they cover, nested ones
+  too; the reply's `⏺` shows as `.` meanwhile. `/cc-stretch:open-all` and `/cc-stretch:close-all` do
+  the same for the latest reply holding a stretch, in the terminal's fullscreen layout and in the
+  Claude desktop app. The stretches grow and shrink together, each in its own colour, and the next
+  prompt's note names every one opened.
+- A stretch still growing goes on growing when the reader opens or closes another. Before, it
+  showed the rest of its long form and its « in one frame.
 - A row never breaks inside a word where its style changes, at a link, a code span, bold or the
   words a press opens. Before, `ago{{.|…}}` could draw its `.` alone at the start of the next row,
   `**12**ms` could split into `12` and `ms`, Chinese closing punctuation after bold could start a

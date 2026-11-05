@@ -359,6 +359,24 @@ export function targetsIn(parts: Segment[], open: readonly string[], action: Act
   })
 }
 
+/**
+ * Every stretch drawn as a link once every stretch is open, in reading order, a stretch before those
+ * inside it: what opening a whole paragraph opens.
+ */
+export function linkStretchesIn(parts: Segment[]): Stretch[] {
+  return parts.flatMap(part => {
+    if (typeof part === 'string' || part.long === undefined) return []
+    switch (drawnAs(part)) {
+      case 'text':
+        return []
+      case 'open':
+        return linkStretchesIn(part.long)
+      case 'link':
+        return [part, ...linkStretchesIn(part.long)]
+    }
+  })
+}
+
 /** The rows `text` takes in a region `columns` cells wide. */
 export function layout(text: string, columns: number): Row[] {
   const width = Math.max(10, columns)

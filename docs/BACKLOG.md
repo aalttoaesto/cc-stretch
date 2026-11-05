@@ -7,7 +7,7 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 
 - [ ] **plugin-folder** — an install copies the plugin, not the repo's dev tools · verdict: direct
 - [x] **renderers-use-drawn-as** — every renderer draws a stretch the way `drawnAs` says · verdict: direct
-- [ ] **keyboard-item-words** — the list rule finds the reply item by the words a reply uses for it · verdict: direct
+- [x] **keyboard-item-words** — the list rule finds the reply item by the words a reply uses for it · verdict: direct
 - [ ] **judge-controls** — a grading run whose judge misgrades a known answer is refused · verdict: direct
 - [ ] **bench-one-copy** — each prompt, flag list and scoring rule in the bench exists once · verdict: defer · promote when: the README's numbers are next rerun
 - [ ] **letters-with-ime** — letters work with an input method on, or the README says to switch it off · verdict: pending · needs: a live session with a Chinese or Japanese input method
@@ -35,7 +35,7 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 - [ ] **opened-from-doc** — `openedFrom`'s comment in `bench/measure.ts` describes the note as 0.5.2 writes it · verdict: defer · promote when: the next change to `bench/measure.ts`
 - [ ] **label-short-forms** — a short form over several sections states their gist, not their topic · verdict: defer · signal: none · promote when: a change with a mechanism none of the six tried shares
 - [ ] **closing-gist-kept** — the closing stretch's short form is in the block it opens · verdict: pending · needs: what the reader sees when such a stretch opens
-- [ ] **managed-setup-limit** — the README says Team, Enterprise and managed setups never get the guide · verdict: direct
+- [x] **managed-setup-limit** — the README says Team, Enterprise and managed setups never get the guide · verdict: direct
 - [ ] **desktop-first-request** — the guide reaches the desktop app's first request · verdict: pending · needs: whether the desktop app's `ui_attach` arrives before its first request
 - [ ] **long-session-drift** — a bench task shows whether Claude stops writing stretches deep in a long session · verdict: defer · signal: none · promote when: a second report of stretches stopping in a long session
 - [ ] **copy-on-select** — the plugin's selection copies when Claude Code's own would · verdict: pending · needs: a design call on whether a drag or double-click in a paragraph the plugin draws follows "Copy on select"

@@ -15,6 +15,8 @@
 - A stretch with nothing on screen to press (an empty short form with no words before it) takes no
   keyboard letter. Before, it took one drawn nowhere, the next stretch got the letter after it, and
   typing the unseen letter did nothing.
+- The README says that on a Team or Enterprise plan, or with managed settings, Claude never writes
+  stretches, and why ([#3](https://github.com/pro-vi/cc-stretch/issues/3)).
 
 ## 0.5.4 — 2026-10-24
 

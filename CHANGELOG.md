@@ -10,6 +10,8 @@
   form, as it does in fullscreen and the desktop app. Before, it showed its unfinished long form.
 - A bold sentence ends the words before a lone period, as a plain sentence does: in
   `**Done.** The tests pass{{.|…}}` only "The tests pass" opens the stretch.
+- The note to Claude names a lone period inside an opened long form by the sentence before it, as
+  it does at the top level. Before, it still called it ".".
 
 ## 0.5.4 — 2026-10-24
 

@@ -510,6 +510,9 @@ describe('layout', () => {
     const names = namesOf(parse('It merged{{.|, and passed.}} It is approved{{.|, but blocked.}} The check exited 0{{|, so no errors}}. {{Done.|Done in `ci.ts`.}}'))
     expect([...names.values()]).toEqual(['It merged.', 'It is approved.', 'The check exited 0.', 'Done.'])
     expect([...namesOf(parse('It merged {{.|, and passed.}}')).values()]).toEqual(['It merged .'])
+    // A lone period inside a long form is named by the sentence before it there too.
+    const nested = namesOf(parse('It merged{{.|, and passed. CI is green{{.|, all 40 checks.}}}}'))
+    expect([...nested.values()]).toEqual(['CI is green.', 'It merged.'])
   })
 
   test('draws the lead-in words of a link with none of its own as a run of their own, so rows break where they would without them', async () => {

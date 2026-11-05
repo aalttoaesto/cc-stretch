@@ -2,7 +2,7 @@
 // runs, wrapped to the region's width, so a press can be matched to the phrase under it. Claude
 // Code draws every paragraph without a stretch with its own markdown.
 
-import { closesFence, codeSpan, drawnAs, isLinkable, isRule, openingFence, stretches } from './parse'
+import { closesFence, codeSpan, drawnAs, isRule, openingFence } from './parse'
 import type { Segment, Stretch } from './parse'
 
 /** What a press on a pressable phrase does to its stretch. */
@@ -244,7 +244,8 @@ export function namesOf(parts: Segment[]): Map<string, string> {
     const { leadIns, tails } = leadInsOf(segments, () => true, isParagraphEnd)
     segments.forEach((part, i) => {
       if (typeof part === 'string') return
-      if (drawnAs(part) === 'open') walk(part.long ?? [], false)
+      // A long form drawn at all, open or once its link is pressed, names its own links by their lead-ins too.
+      if (drawnAs(part) !== 'text') walk(part.long ?? [], false)
       if (drawnAs(part) !== 'link') return
       const before = segments[i - 1]
       const after = segments[i + 1]
@@ -254,7 +255,6 @@ export function namesOf(parts: Segment[]): Map<string, string> {
       const leadInText = leadIn !== undefined && typeof before === 'string' ? before.slice(leadIn.from) : ''
       const glued = tail !== undefined && typeof after === 'string' ? after.slice(0, tail.to) : ''
       names.set(part.key, `${leadInText}${part.short}${glued}`.trim())
-      for (const nested of stretches(part.long ?? [])) if (isLinkable(nested)) names.set(nested.key, nested.short.trim())
     })
   }
   walk(parts, true)

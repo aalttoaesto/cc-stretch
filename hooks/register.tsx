@@ -632,7 +632,12 @@ async function lettersFor($: EngineInterface, action: Action): Promise<{ letter:
   const targets = await Promise.all(
     paragraphs.map(async ({ member, text }) => {
       const open = await read($, memberOf(openStretches, { requestId: member }))
-      return targetsIn(parse(text), open, action).map(stretch => ({ member, key: stretch.key }))
+      const parts = parse(text)
+      // A closed stretch with no words drawn to press, an empty short form with none before it, takes no letter.
+      const names = action === 'open' ? namesOf(parts) : undefined
+      return targetsIn(parts, open, action)
+        .filter(stretch => names?.get(stretch.key) !== '')
+        .map(stretch => ({ member, key: stretch.key }))
     }),
   )
 

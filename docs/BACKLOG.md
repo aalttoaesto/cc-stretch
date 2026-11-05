@@ -23,7 +23,7 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 - [ ] **refusal-as-answer** — a call the safety filter stopped counts as a failed call, never as an answer · verdict: direct · signal: an `ok` row whose text says it was "stopped by a safety classifier"
 - [x] **lead-in-bold-sentence** — a bold sentence ends the words before a lone period, as a plain one does · verdict: direct
 - [x] **nested-note-names** — the note names a lone period inside an opened long form by its words, not "." · verdict: direct
-- [ ] **dead-letter** — a stretch with nothing on screen to press takes no keyboard letter · verdict: direct
+- [x] **dead-letter** — a stretch with nothing on screen to press takes no keyboard letter · verdict: direct
 - [ ] **growth-finishes** — a stretch still growing goes on growing when the reader opens or closes another · verdict: defer · signal: none · promote when: the jump shows in a recorded take, a reader reports it, or the growth code next changes
 - [ ] **posts-hold-opens** — the note names every stretch the reader opened, however close together two presses land · verdict: pending · needs: how far apart a click's press and release reach the terminal, a trackpad tap included
 - [ ] **desktop-lead-in** — in the desktop app, the words before a lone period open its stretch too · verdict: pending · needs: a look at the desktop app: what a drag or double-click that starts on link text does, and what `[](…)` draws

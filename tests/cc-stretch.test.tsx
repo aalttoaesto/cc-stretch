@@ -1745,14 +1745,16 @@ describe('keyboard', () => {
     await ui.unmount()
   })
 
-  test('a stretch with an empty short form and no words before it draws no link and opens from no letter', async ($, on) => {
-    const text = '{{|hidden words}} after {{shown|more}}.'
+  test('a stretch with an empty short form and no words before it draws no link and takes no letter', async ($, on) => {
+    const text = '{{|hidden words}} after {{shown|shown and more}}.'
     engine(on, [text])
     const ui = await mountReply($, FULLSCREEN, text)
     await down(ui)
-    expect(await letters(ui)).toEqual(['s'])
-    expect(await type($, 'a')).toBe('')
+    // The first letter goes to the first stretch drawn to press.
+    expect(await letters(ui)).toEqual(['a'])
+    await type($, 'a')
     await ui.advance(2000)
+    expect(await textIn(ui)).toContain('shown and more')
     expect(await textIn(ui)).not.toContain('hidden words')
     await ui.unmount()
   })

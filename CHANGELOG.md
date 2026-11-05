@@ -12,6 +12,9 @@
   `**Done.** The tests pass{{.|…}}` only "The tests pass" opens the stretch.
 - The note to Claude names a lone period inside an opened long form by the sentence before it, as
   it does at the top level. Before, it still called it ".".
+- A stretch with nothing on screen to press (an empty short form with no words before it) takes no
+  keyboard letter. Before, it took one drawn nowhere, the next stretch got the letter after it, and
+  typing the unseen letter did nothing.
 
 ## 0.5.4 — 2026-10-24
 

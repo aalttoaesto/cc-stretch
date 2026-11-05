@@ -2,7 +2,7 @@
 // runs, wrapped to the region's width, so a press can be matched to the phrase under it. Claude
 // Code draws every paragraph without a stretch with its own markdown.
 
-import { closesFence, codeSpan, drawnAs, isLinkable, isRule, openingFence, stretches } from './parse'
+import { closesFence, codeSpan, drawnAs, isRule, openingFence } from './parse'
 import type { Segment, Stretch } from './parse'
 
 /** What a press on a pressable phrase does to its stretch. */
@@ -146,10 +146,12 @@ export function leadInOf(text: string): { from: number; to: number } | undefined
     if (piece === undefined) break
     if (!piece.isCode && CUT_MARKUP.test(piece.text)) {
       // A bold phrase is taken whole when it starts a piece outside a code span, holds words and no
-      // other markup, and no sentence ends inside it.
+      // other markup, and no sentence ends inside it. One that ends a sentence of its own ends the
+      // words after it, as a plain sentence would.
       const bold = BOLD_END.exec(line.slice(0, piece.at + piece.text.length))
       const start = bold === null ? -1 : pieces.findIndex(p => p.at === bold.index && !p.isCode)
       const inner = bold?.[1] ?? ''
+      if (from !== undefined && SENTENCE_END.test(inner)) break
       const isBoldWhole =
         start !== -1 && start <= k && HAS_WORDS.test(inner) && !CUT_MARKUP.test(inner) &&
         pieces.slice(start, k).every(p => p.isSpace || p.isCode || !SENTENCE_END.test(p.text))
@@ -242,7 +244,8 @@ export function namesOf(parts: Segment[]): Map<string, string> {
     const { leadIns, tails } = leadInsOf(segments, () => true, isParagraphEnd)
     segments.forEach((part, i) => {
       if (typeof part === 'string') return
-      if (drawnAs(part) === 'open') walk(part.long ?? [], false)
+      // A long form drawn at all, open or once its link is pressed, names its own links by their lead-ins too.
+      if (drawnAs(part) !== 'text') walk(part.long ?? [], false)
       if (drawnAs(part) !== 'link') return
       const before = segments[i - 1]
       const after = segments[i + 1]
@@ -252,7 +255,6 @@ export function namesOf(parts: Segment[]): Map<string, string> {
       const leadInText = leadIn !== undefined && typeof before === 'string' ? before.slice(leadIn.from) : ''
       const glued = tail !== undefined && typeof after === 'string' ? after.slice(0, tail.to) : ''
       names.set(part.key, `${leadInText}${part.short}${glued}`.trim())
-      for (const nested of stretches(part.long ?? [])) if (isLinkable(nested)) names.set(nested.key, nested.short.trim())
     })
   }
   walk(parts, true)
@@ -659,33 +661,70 @@ function wrap(runs: Run[], width: number, first: string, rest: string, isDimLead
     continuations.set(row, { join, lead: used })
   }
 
-  begin(first)
-  for (const run of runs) {
-    for (const text of run.text.split(/( +)/).flatMap(breakables)) {
-      if (text === '') continue
-      if (text.trim() === '') {
-        if (isBare) continue
-        if (used + widthOf(text) <= width) put({ ...run, text })
-        else breakRow(true)
+  // One styled piece of a word, placed on its own: on this row if it fits, else on the next, cut
+  // where the row ends when it is wider than a whole row.
+  const place = (piece: Run) => {
+    let word = piece.text
+    while (word !== '') {
+      if (used + widthOf(word) <= width) {
+        put({ ...piece, text: word })
+        break
+      }
+      if (!isBare) {
+        breakRow()
         continue
       }
-      let word = text
-      while (word !== '') {
-        if (used + widthOf(word) <= width) {
-          put({ ...run, text: word })
-          break
-        }
-        if (!isBare) {
-          breakRow()
-          continue
-        }
-        // A word wider than a whole row is cut where the row ends.
-        const [head, tail] = cut(word, width - used)
-        put({ ...run, text: head })
-        breakRow()
-        word = tail
+      const [head, tail] = cut(word, width - used)
+      put({ ...piece, text: head })
+      breakRow()
+      word = tail
+    }
+  }
+
+  begin(first)
+  // Break points are found in the line's whole text, so a style change inside a word (a link, a code
+  // span, bold, a pressed phrase) is no place to break, and punctuation that never starts a row stays
+  // with the word before it whatever its style. Each piece is then split back across its runs.
+  const whole = runs.map(run => run.text).join('')
+  let runIndex = 0
+  let runAt = 0
+  const stylesOf = (length: number): Run[] => {
+    const pieces: Run[] = []
+    while (length > 0 && runIndex < runs.length) {
+      const run = runs[runIndex] as Run
+      const take = Math.min(length, run.text.length - runAt)
+      if (take > 0) pieces.push({ ...run, text: run.text.slice(runAt, runAt + take) })
+      runAt += take
+      length -= take
+      if (runAt >= run.text.length) {
+        runIndex += 1
+        runAt = 0
       }
     }
+    return pieces
+  }
+  for (const text of whole.split(/( +)/).flatMap(breakables)) {
+    if (text === '') continue
+    const pieces = stylesOf(text.length)
+    if (text.trim() === '') {
+      if (isBare) continue
+      if (used + widthOf(text) <= width) pieces.forEach(put)
+      else breakRow(true)
+      continue
+    }
+    const cells = widthOf(text)
+    if (used + cells <= width) {
+      pieces.forEach(put)
+      continue
+    }
+    if (!isBare && cells <= width - widthOf(rest)) {
+      breakRow()
+      pieces.forEach(put)
+      continue
+    }
+    // A word wider than a whole row breaks at its style changes first, so `(https://…)` keeps its
+    // URL whole where it fits, and is cut where a row ends only where it must be.
+    pieces.forEach(place)
   }
   rows.push(row)
 

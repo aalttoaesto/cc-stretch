@@ -6,8 +6,8 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 ## Lanes
 
 - [ ] **plugin-folder** — an install copies the plugin, not the repo's dev tools · verdict: direct
-- [ ] **renderers-use-drawn-as** — every renderer draws a stretch the way `drawnAs` says · verdict: direct
-- [ ] **keyboard-item-words** — the list rule finds the reply item by the words a reply uses for it · verdict: direct
+- [x] **renderers-use-drawn-as** — every renderer draws a stretch the way `drawnAs` says · verdict: direct
+- [x] **keyboard-item-words** — the list rule finds the reply item by the words a reply uses for it · verdict: direct
 - [ ] **judge-controls** — a grading run whose judge misgrades a known answer is refused · verdict: direct
 - [ ] **bench-one-copy** — each prompt, flag list and scoring rule in the bench exists once · verdict: defer · promote when: the README's numbers are next rerun
 - [ ] **letters-with-ime** — letters work with an input method on, or the README says to switch it off · verdict: pending · needs: a live session with a Chinese or Japanese input method
@@ -19,11 +19,11 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 - [ ] **tinted-256** — the four tinted highlights stay four colours on a 256-colour terminal · verdict: defer · signal: none · promote when: a reader reports two tinted stretches in one colour
 - [ ] **tinted-neighbours** — stretches side by side on screen differ in tinted colour · verdict: pending · needs: a design call on whether neighbours on screen must differ
 - [ ] **open-colour-gap** — opened words are in their colour from their first frame · verdict: defer · signal: none · promote when: the gap shows in a recorded take
-- [ ] **wrap-across-styles** — a style change inside a word is never a place to break a row · verdict: direct · signal: a row that starts with `.` after a link, or a pressed word that moves a row on the first frame of opening · promote when: now; it breaks the promise that words on screen stay where they are
-- [ ] **refusal-as-answer** — a call the safety filter stopped counts as a failed call, never as an answer · verdict: direct · signal: an `ok` row whose text says it was "stopped by a safety classifier"
-- [ ] **lead-in-bold-sentence** — a bold sentence ends the words before a lone period, as a plain one does · verdict: direct
-- [ ] **nested-note-names** — the note names a lone period inside an opened long form by its words, not "." · verdict: direct
-- [ ] **dead-letter** — a stretch with nothing on screen to press takes no keyboard letter · verdict: direct
+- [x] **wrap-across-styles** — a style change inside a word is never a place to break a row · verdict: direct · signal: a row that starts with `.` after a link, or a pressed word that moves a row on the first frame of opening · promote when: now; it breaks the promise that words on screen stay where they are
+- [x] **refusal-as-answer** — a call the safety filter stopped counts as a failed call, never as an answer · verdict: direct · signal: an `ok` row whose text says it was "stopped by a safety classifier"
+- [x] **lead-in-bold-sentence** — a bold sentence ends the words before a lone period, as a plain one does · verdict: direct
+- [x] **nested-note-names** — the note names a lone period inside an opened long form by its words, not "." · verdict: direct
+- [x] **dead-letter** — a stretch with nothing on screen to press takes no keyboard letter · verdict: direct
 - [ ] **growth-finishes** — a stretch still growing goes on growing when the reader opens or closes another · verdict: defer · signal: none · promote when: the jump shows in a recorded take, a reader reports it, or the growth code next changes
 - [ ] **posts-hold-opens** — the note names every stretch the reader opened, however close together two presses land · verdict: pending · needs: how far apart a click's press and release reach the terminal, a trackpad tap included
 - [ ] **desktop-lead-in** — in the desktop app, the words before a lone period open its stretch too · verdict: pending · needs: a look at the desktop app: what a drag or double-click that starts on link text does, and what `[](…)` draws
@@ -35,7 +35,7 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 - [ ] **opened-from-doc** — `openedFrom`'s comment in `bench/measure.ts` describes the note as 0.5.2 writes it · verdict: defer · promote when: the next change to `bench/measure.ts`
 - [ ] **label-short-forms** — a short form over several sections states their gist, not their topic · verdict: defer · signal: none · promote when: a change with a mechanism none of the six tried shares
 - [ ] **closing-gist-kept** — the closing stretch's short form is in the block it opens · verdict: pending · needs: what the reader sees when such a stretch opens
-- [ ] **managed-setup-limit** — the README says Team, Enterprise and managed setups never get the guide · verdict: direct
+- [x] **managed-setup-limit** — the README says Team, Enterprise and managed setups never get the guide · verdict: direct
 - [ ] **desktop-first-request** — the guide reaches the desktop app's first request · verdict: pending · needs: whether the desktop app's `ui_attach` arrives before its first request
 - [ ] **long-session-drift** — a bench task shows whether Claude stops writing stretches deep in a long session · verdict: defer · signal: none · promote when: a second report of stretches stopping in a long session
 - [ ] **copy-on-select** — the plugin's selection copies when Claude Code's own would · verdict: pending · needs: a design call on whether a drag or double-click in a paragraph the plugin draws follows "Copy on select"

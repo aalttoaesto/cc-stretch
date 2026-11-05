@@ -474,6 +474,9 @@ describe('layout', () => {
     expect(leadIn('The **cache key** is stale')).toBe('The **cache key** is stale')
     expect(leadIn('See **[docs](https://x.y)** now')).toBe('now')
     expect(leadIn('So **it failed. Then it** passed')).toBe('passed')
+    expect(leadIn("**Fix main's e2e first.** It unblocks #218")).toBe('It unblocks #218')
+    expect(leadIn('**Done.** The tests pass')).toBe('The tests pass')
+    expect(leadIn('**Done.**')).toBe('**Done.**')
     expect(leadIn('✅ Tests pass')).toBe('Tests pass')
     expect(leadIn('See [docs](https://x.y)')).toBeUndefined()
     expect(leadIn('Use `**` a b**')).toBeUndefined()
@@ -507,6 +510,9 @@ describe('layout', () => {
     const names = namesOf(parse('It merged{{.|, and passed.}} It is approved{{.|, but blocked.}} The check exited 0{{|, so no errors}}. {{Done.|Done in `ci.ts`.}}'))
     expect([...names.values()]).toEqual(['It merged.', 'It is approved.', 'The check exited 0.', 'Done.'])
     expect([...namesOf(parse('It merged {{.|, and passed.}}')).values()]).toEqual(['It merged .'])
+    // A lone period inside a long form is named by the sentence before it there too.
+    const nested = namesOf(parse('It merged{{.|, and passed. CI is green{{.|, all 40 checks.}}}}'))
+    expect([...nested.values()]).toEqual(['CI is green.', 'It merged.'])
   })
 
   test('draws the lead-in words of a link with none of its own as a run of their own, so rows break where they would without them', async () => {
@@ -519,6 +525,21 @@ describe('layout', () => {
     const rows = layout(`It ${link('leadIn', 'k', 'merged')}${link('open', 'k', '.')}`, 30)
     expect(linkAt(rows, 4, 0)).toEqual({ action: 'open', key: 'k', isLeadIn: true })
     expect(linkAt(rows, 9, 0)).toEqual({ action: 'open', key: 'k' })
+  })
+
+  test('never breaks a row at a style change inside a word', async () => {
+    const shown = (text: string, width: number) => layout(text, width).map(row => row.map(run => run.text).join(''))
+    expect(shown(`It merged 3 days ${link('leadIn', 'k', 'ago')}${link('open', 'k', '.')}`, 20)).toEqual(['It merged 3 days', 'ago.'])
+    expect(shown('The run took **12**ms', 15)).toEqual(['The run took', '12ms'])
+    expect(shown('一二三四**五**。', 10)).toEqual(['一二三四', '五。'])
+    // The first frame of opening draws the short form as plain text: no row moves.
+    expect(shown(`Then run the ${link('leadIn', 'k', 'tests')}${link('open', 'k', '.')}`, 18)).toEqual(shown('Then run the tests.', 18))
+  })
+
+  test('moves a styled word whole to the next row, and cuts one wider than a row at its style changes first', async () => {
+    const shown = (text: string, width: number) => layout(text, width).map(row => row.map(run => run.text).join(''))
+    expect(shown('see (https://x.invalid/a)', 22)).toEqual(['see', '(https://x.invalid/a)'])
+    expect(shown('see (https://x.invalid/a)', 16)[0]).toBe('see (')
   })
 
   test('never lets a code span or a markdown link run over a pressable phrase, as half of one drawn by a growing long form would', async () => {
@@ -1220,6 +1241,19 @@ test('on the main screen, every stretch is drawn open, and the first such reply 
   await again.unmount()
 })
 
+test('a stretch still streaming shows its short form in the terminal, on the main screen and in the desktop app alike', async $ => {
+  const text = 'It starts {{short words|long words'
+  const terminal = await mountReply($, FULLSCREEN, text)
+  expect(await textIn(terminal)).toBe('It starts short words')
+  await terminal.unmount()
+  for (const [viewport, surface] of [[MAIN_SCREEN, 'terminal'], [FULLSCREEN, 'desktop']] as const) {
+    const ui = await mountReply($, viewport, text, surface, `reply-${surface}`)
+    expect(await shown(ui)).toContain('It starts short words')
+    expect(await shown(ui)).not.toContain('long words')
+    await ui.unmount()
+  }
+})
+
 test('in fullscreen or the phone app, no reply says why stretches are open', async $ => {
   const ui = await mountReply($, FULLSCREEN)
   expect(await hasNote(ui)).toBe(false)
@@ -1711,14 +1745,16 @@ describe('keyboard', () => {
     await ui.unmount()
   })
 
-  test('a stretch with an empty short form and no words before it draws no link and opens from no letter', async ($, on) => {
-    const text = '{{|hidden words}} after {{shown|more}}.'
+  test('a stretch with an empty short form and no words before it draws no link and takes no letter', async ($, on) => {
+    const text = '{{|hidden words}} after {{shown|shown and more}}.'
     engine(on, [text])
     const ui = await mountReply($, FULLSCREEN, text)
     await down(ui)
-    expect(await letters(ui)).toEqual(['s'])
-    expect(await type($, 'a')).toBe('')
+    // The first letter goes to the first stretch drawn to press.
+    expect(await letters(ui)).toEqual(['a'])
+    await type($, 'a')
     await ui.advance(2000)
+    expect(await textIn(ui)).toContain('shown and more')
     expect(await textIn(ui)).not.toContain('hidden words')
     await ui.unmount()
   })

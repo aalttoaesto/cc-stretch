@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- A row never breaks inside a word where its style changes, at a link, a code span, bold or the
+  words a press opens. Before, `ago{{.|…}}` could draw its `.` alone at the start of the next row,
+  `**12**ms` could split into `12` and `ms`, Chinese closing punctuation after bold could start a
+  row, and the first frame of opening a stretch could move a pressed word to another row.
+- On the main screen, where every stretch is drawn open, a stretch still streaming shows its short
+  form, as it does in fullscreen and the desktop app. Before, it showed its unfinished long form.
+- A bold sentence ends the words before a lone period, as a plain sentence does: in
+  `**Done.** The tests pass{{.|…}}` only "The tests pass" opens the stretch.
+- The note to Claude names a lone period inside an opened long form by the sentence before it, as
+  it does at the top level. Before, it still called it ".".
+- A stretch with nothing on screen to press (an empty short form with no words before it) takes no
+  keyboard letter. Before, it took one drawn nowhere, the next stretch got the letter after it, and
+  typing the unseen letter did nothing.
+- The README says that on a Team or Enterprise plan, or with managed settings, Claude never writes
+  stretches, and why ([#3](https://github.com/pro-vi/cc-stretch/issues/3)).
+
 ## 0.5.4 — 2026-10-24
 
 - When a stretch's long form ends in a code block and Claude puts the stretch's closing braces on

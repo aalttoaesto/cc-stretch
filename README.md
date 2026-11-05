@@ -121,6 +121,13 @@ never lose your place.
   one, is the terminal's own.
 - Claude writes every level up front, so a reply costs about as many tokens as before. You read
   less; you don't pay less.
+- On a Team or Enterprise plan, or on a machine with managed settings or a managed MCP server file,
+  Claude never writes stretches. As of Claude Code 2.1.299 to 2.1.303 the built-in
+  `cc-plugin-sec-default` plugin skips the `prompt.compose` hook of plugins a person installed, and
+  that hook is how cc-stretch gives Claude its guide
+  ([#3](https://github.com/pro-vi/cc-stretch/issues/3)). It is a security control, so cc-stretch
+  does not send the guide another way. Ask whoever runs your managed settings to list cc-stretch
+  there.
 - The `{{short|long}}` markup shows as raw text wherever the plugin isn't loaded.
 - Built on Claude Code's function-hook plugin API, which is early access and changes between
   releases. Checked in the terminal on macOS with Claude Code 2.1.300 to 2.1.302 and 2.1.306, and

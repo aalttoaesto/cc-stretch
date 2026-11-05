@@ -71,7 +71,7 @@ export function readTask(value: unknown): Task {
 
 const KEYBOARD_EVIDENCE =
   'Treat this supplied capability report as given. Client elements inside a reply accept keyboard events only after a mouse click gives focus; Escape returns focus. A toolbar above the prompt is reachable with Ctrl+X Tab and supports one-letter or digit buttons; Escape returns to typing. A custom keybinding can invoke an existing engine action only when the engine is not handling that action itself, making it fragile. Slash commands such as /stretch open 2 are keyboard-only but require typing a command for each operation.'
-const KEYBOARD_ITEMS = [['client', 'click', 'in-reply'], ['band', 'toolbar'], ['keybinding'], ['slash']]
+const KEYBOARD_ITEMS = [['client', 'click', 'in-reply', 'reply itself'], ['band', 'toolbar'], ['keybinding'], ['slash']]
 const KEYBOARD_POINTS = ['Client needs an initial mouse click.', 'Toolbar is reachable without a mouse.', 'Custom keybindings can conflict with engine actions.', 'Slash commands are keyboard-only but slow.']
 
 export const TASKS: Task[] = [

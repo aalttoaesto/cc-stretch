@@ -36,7 +36,7 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 - [ ] **label-short-forms** — a short form over several sections states their gist, not their topic · verdict: defer · signal: none · promote when: a change with a mechanism none of the six tried shares
 - [ ] **closing-gist-kept** — the closing stretch's short form is in the block it opens · verdict: pending · needs: what the reader sees when such a stretch opens
 - [x] **managed-setup-limit** — the README says Team, Enterprise and managed setups never get the guide · verdict: direct
-- [ ] **desktop-first-request** — the guide reaches the desktop app's first request · verdict: pending · needs: whether the desktop app's `ui_attach` arrives before its first request
+- [ ] **desktop-first-request** — the guide reaches the desktop app's first request · verdict: pending · needs: whether a pre-warmed spare's prompt is composed again once the desktop app attaches (debug log of a claimed spare)
 - [ ] **long-session-drift** — a bench task shows whether Claude stops writing stretches deep in a long session · verdict: defer · signal: none · promote when: a second report of stretches stopping in a long session
 - [ ] **copy-on-select** — the plugin's selection copies when Claude Code's own would · verdict: pending · needs: a design call on whether a drag or double-click in a paragraph the plugin draws follows "Copy on select"
 - [ ] **windows-link-opener** — on Windows a ctrl- or alt-click on a link in a paragraph that holds a stretch opens it · verdict: pending · needs: a live session on Windows
@@ -423,6 +423,20 @@ hook sees the terminal and any remote app that has announced itself, and the des
 itself with a `ui_attach` message; whether that arrives before the first request is not checked. In
 one desktop-app session on 2.1.295, all three long replies had stretches. A Team or Enterprise
 account would explain the report as well (`managed-setup-limit`).
+
+Seen on 2026-11-05 with the desktop app bundling Claude Code 2.1.317, cc-stretch 0.5.4 listed in
+managed settings and admitted: a session got no guide on any of its turns, yet its replies drew
+stretch markup as desktop links, and a click on one reached `prompt.submit`. So the desktop surface
+was drawing, but the guide hook never saw it. The session was a pre-warmed spare (`--await-claim`):
+the app boots it in a neutral directory before anyone types and binds it with `claim_session` at the
+first message. Another spare's debug log (2.1.318) shows its compose running about 2 s after boot
+with `$.session.surfaces` `[]` and `session.start` "surface none, not interactive". In the 2.1.317
+binary, compose's `surfaces` is `terminal` (when the composer is one) plus the roster that
+`ui_attach` fills. Not checked: whether the claimed spare composes again, or whether the desktop
+app ever sends it `ui_attach`. `$.ui.invalidate` drops the cache of `prompt.section`,
+`prompt.context`, `prompt.attachment` and `tool.describe`, but not of `prompt.compose`. To check,
+set `CLAUDE_CODE_DEBUG_LOGS_DIR` for the desktop app and look for `ui_attach` and the compose
+`surfaces` after the claim.
 
 ## long-session-drift
 

@@ -8,6 +8,8 @@
   row, and the first frame of opening a stretch could move a pressed word to another row.
 - On the main screen, where every stretch is drawn open, a stretch still streaming shows its short
   form, as it does in fullscreen and the desktop app. Before, it showed its unfinished long form.
+- A bold sentence ends the words before a lone period, as a plain sentence does: in
+  `**Done.** The tests pass{{.|…}}` only "The tests pass" opens the stretch.
 
 ## 0.5.4 — 2026-10-24
 

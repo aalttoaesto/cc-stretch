@@ -146,10 +146,12 @@ export function leadInOf(text: string): { from: number; to: number } | undefined
     if (piece === undefined) break
     if (!piece.isCode && CUT_MARKUP.test(piece.text)) {
       // A bold phrase is taken whole when it starts a piece outside a code span, holds words and no
-      // other markup, and no sentence ends inside it.
+      // other markup, and no sentence ends inside it. One that ends a sentence of its own ends the
+      // words after it, as a plain sentence would.
       const bold = BOLD_END.exec(line.slice(0, piece.at + piece.text.length))
       const start = bold === null ? -1 : pieces.findIndex(p => p.at === bold.index && !p.isCode)
       const inner = bold?.[1] ?? ''
+      if (from !== undefined && SENTENCE_END.test(inner)) break
       const isBoldWhole =
         start !== -1 && start <= k && HAS_WORDS.test(inner) && !CUT_MARKUP.test(inner) &&
         pieces.slice(start, k).every(p => p.isSpace || p.isCode || !SENTENCE_END.test(p.text))

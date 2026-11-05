@@ -124,7 +124,7 @@ never lose your place.
 - On a Team or Enterprise plan, or on a machine with managed settings or a managed MCP server file,
   Claude never writes stretches. As of Claude Code 2.1.299 to 2.1.303 the built-in
   `cc-plugin-sec-default` plugin skips the `prompt.compose` hook of plugins a person installed, and
-  that hook is how cc-stretch gives Claude its guide; `claude plugin validate .` warns of it
+  that hook is how cc-stretch gives Claude its guide
   ([#3](https://github.com/pro-vi/cc-stretch/issues/3)). It is a security control, so cc-stretch
   does not send the guide another way. Ask whoever runs your managed settings to list cc-stretch
   there.

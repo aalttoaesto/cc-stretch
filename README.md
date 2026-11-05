@@ -80,6 +80,10 @@ never lose your place.
   so there is a phrase to click rather than one cell. This is in the terminal's fullscreen layout;
   in the Claude desktop app only the short form is the link.
 - **Streaming stays clean.** While a reply streams, stretches already show as their short forms.
+- **A whole reply at once.** With the letters up, typing `.` opens every stretch in the replies they
+  cover, nested ones too, or with the closing letters up closes them all; the reply's `⏺` turns into
+  a `.` to say so. `/cc-stretch:open-all` and `/cc-stretch:close-all` do the same for the latest
+  reply holding a stretch, also in the Claude desktop app.
 - **Letters for the keyboard.** In the terminal's fullscreen layout, alt+↓ or ctrl+↓ puts a letter
   over each closed stretch in the latest three replies on screen that hold one (up to 26), and
   typing that letter opens it. alt+↑ or ctrl+↑ puts letters over each «, to close. Typing anything

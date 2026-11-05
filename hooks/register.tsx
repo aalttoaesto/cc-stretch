@@ -4,7 +4,7 @@ import type { ClassicEventOf, ClassicResultOf, EngineInterface, Register, Render
 import { GUIDE } from './guide'
 import { closeAfter, codeSpan, drawnAs, hideLongForms, isLinkable, KEY_SEPARATOR, newStreamState, paragraphsOf, parentOf, parse, stretches } from './parse'
 import type { Segment, StreamState, Stretch } from './parse'
-import { isWebLink, namesOf, openedOf, targetsIn } from './layout'
+import { isWebLink, linkStretchesIn, namesOf, openedOf, targetsIn } from './layout'
 import type { Action, OpenedStretch } from './layout'
 import { contrastOn, hex, mix } from './contrast'
 import type { Hex, Rgb } from './contrast'
@@ -83,6 +83,8 @@ const LETTERS = 'asdfghjklqwertyuiopzxcvbnm'
 // These two actions scroll the diff panel's file list, bound in its Global context to alt+down and
 // ctrl+down, and alt+up and ctrl+up.
 const CHORDS: Record<Action, string> = { open: 'app:diffFileListDown', close: 'app:diffFileListUp' }
+/** The key that, while letters show, opens or closes every stretch in the replies they cover. */
+const ALL_KEY = '.'
 /** How many of the latest replies on screen holding a stretch take letters. */
 const LETTERED_REPLIES = 3
 /** How many of the latest replies drawn by Clients are kept, to find the ones that take letters. */
@@ -95,6 +97,8 @@ const KEPT_DRAWN_REPLIES = 50
 type DrawnReply = { text: string; isOnScreen: boolean; paragraphs: { member: string; text: string }[] }
 // Module state, not an atom: as of Claude Code 2.1.301 a render hook cannot write plugin state.
 const drawnReplies = new Map<string, DrawnReply>()
+/** The latest replies holding a stretch drawn in the desktop app, by request id: their text, markup and all. */
+const desktopReplies = new Map<string, { text: string }>()
 
 /** A reply's text with its whitespace gone, as the site may break and trim its lines. */
 const keyOf = (text: string) => text.replace(/\s+/g, '')
@@ -282,6 +286,27 @@ export const register: Register = (on, options) => {
     return { text: 'Style toolbar shown above the prompt; close puts it away.' }
   })
 
+  // /cc-stretch:open-all and /cc-stretch:close-all act on the latest reply holding a stretch: in the
+  // terminal's fullscreen layout and in the desktop app, wherever one was drawn.
+  for (const action of ['open', 'close'] as const) {
+    on('command.run', { command: `cc-stretch:${action}-all` }, async ($, e) => {
+      const [terminal] = await newestFirst($, drawnReplies)
+      const [desktop] = await newestFirst($, desktopReplies)
+      const replies: ReplyPlaces[] = [
+        ...(terminal === undefined ? [] : [{ requestId: terminal.requestId, paragraphs: terminal.paragraphs }]),
+        ...(desktop === undefined ? [] : [{ requestId: desktop.requestId, paragraphs: [{ member: `${desktop.requestId}#desktop`, text: desktop.text }], isDesktop: true as const }]),
+      ]
+      if (replies.length === 0) {
+        if (!e.presentation.isFullscreen && (await $.session.surfaces()).includes('terminal')) return { text: `Every stretch is drawn open on the main screen. For stretches you can open and close, ${FULLSCREEN_HOW}` }
+        return { text: 'No reply on screen holds a stretch.' }
+      }
+      const acted = await openOrCloseAll($, action, replies)
+      const plural = acted === 1 ? '' : 'es'
+      if (acted === 0) return { text: action === 'open' ? 'Every stretch in the latest reply is already open.' : 'No stretch in the latest reply is open.' }
+      return { text: `${action === 'open' ? 'Opened' : 'Closed'} ${acted} stretch${plural} in the latest reply.` }
+    })
+  }
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     // Terminal only: as of Claude Code 2.1.302 the desktop app draws each Button natively, where a highlight swatch has no label.
     if (e.surface !== 'terminal' || e.props.hasSurvey || !(await read($, toolbarShown))) return next(e)
@@ -434,6 +459,7 @@ export const register: Register = (on, options) => {
 
     // The desktop app draws markdown links and hands a press on one to the plugin: the whole block is
     // one Markdown whose closed stretches are links that open in place, each open one ending in a «.
+    if (e.surface === 'desktop') setNewest(desktopReplies, e.requestId, { text }, KEPT_DRAWN_REPLIES)
     if (e.surface === 'desktop') {
       const { Markdown } = $.ui.resolve(e)
       const open = memberOf(openStretches, { requestId: `${e.requestId}#desktop` })
@@ -504,12 +530,14 @@ export const register: Register = (on, options) => {
       )
       // On a reply's first row the bullet and the space after it are Buttons: the first puts up the
       // letters that open, or puts them away when they show; the second does the same for those that
-      // close. A chord presses them, and so does a click.
+      // close. A chord presses them, and so does a click. While the letters cover this reply, the
+      // bullet is a `.`, the key that opens or closes all of it.
+      const isWhole = shown?.replies?.includes(e.requestId) === true
       return (
         <Box flexDirection="row">
           {e.props.isFirstOfReply
             ? [
-                <Button key="open-letters" plain label="⏺" action={CHORDS.open} onPress={() => void showLetters($, 'open')} />,
+                <Button key="open-letters" plain label={isWhole ? '.' : '⏺'} action={CHORDS.open} onPress={() => void showLetters($, 'open')} />,
                 <Button key="close-letters" plain label=" " action={CHORDS.close} onPress={() => void showLetters($, 'close')} />,
               ]
             : <Text>{marker}</Text>}
@@ -583,6 +611,12 @@ export const register: Register = (on, options) => {
     if (shown === null) return next(e)
     await update($, lettering, () => null)
     const typed = e.key?.ctrl === undefined && e.key?.meta === undefined ? e.key?.key : undefined
+    // `.` opens or closes every stretch in the replies the letters cover, each still as drawn.
+    const whole = typed === ALL_KEY ? (shown.replies ?? []).flatMap(id => terminalPlacesOf(id) ?? []) : []
+    if (whole.length > 0) {
+      await openOrCloseAll($, shown.action, whole)
+      return { text: e.text, cursor: e.cursor }
+    }
     const target = shown.targets.find(one => one.letter === typed)
     if (target === undefined) return next(e)
     await update($, memberOf(askedStretch, { requestId: target.member }), last => ({ key: target.key, action: shown.action, n: (last?.n ?? 0) + 1 }))
@@ -606,42 +640,127 @@ export const register: Register = (on, options) => {
  */
 async function showLetters($: EngineInterface, action: Action): Promise<void> {
   const shown = await read($, lettering)
-  const targets = shown?.action === action ? [] : await lettersFor($, action)
-  await update($, lettering, () => (targets.length === 0 ? null : { action, targets }))
+  const { targets, replies } = shown?.action === action ? { targets: [], replies: [] } : await lettersFor($, action)
+  await update($, lettering, () => (targets.length === 0 ? null : { action, targets, replies }))
 }
 
 /**
- * A letter for each of the first 26 stretches `action` can act on in the latest three replies on
- * screen holding a stretch, newest first, in reading order within each. The order is read from the
- * session's messages because Claude Code 2.1.301 draws a reply for the first time when it scrolls
- * into view.
+ * Replies drawn so far, by request id, newest first, leaving out any not found among the session's
+ * replies that hold a stretch. The order is read from the session's messages because Claude Code
+ * 2.1.301 draws a reply for the first time when it scrolls into view.
  */
-async function lettersFor($: EngineInterface, action: Action): Promise<{ letter: string; member: string; key: string }[]> {
+async function newestFirst<R extends { text: string }>($: EngineInterface, replies: Iterable<[string, R]>): Promise<(R & { requestId: string })[]> {
   // With their whitespace gone, no reply is found across two messages joined by a line break.
   const written = (await $.session.messages().catch(() => []))
     .filter(message => message.role === 'assistant' && message.text.includes('{{'))
     .map(message => keyOf(message.text))
     .join('\n')
-  const replies = [...drawnReplies.values()]
-    .filter(reply => reply.isOnScreen)
-    .map(reply => ({ reply, at: written.lastIndexOf(keyOf(reply.text)) }))
+  return [...replies]
+    .map(([requestId, reply]) => ({ reply: { ...reply, requestId }, at: written.lastIndexOf(keyOf(reply.text)) }))
     .filter(({ at }) => at !== -1)
     .sort((a, b) => b.at - a.at)
-    .slice(0, LETTERED_REPLIES)
-  const paragraphs = replies.flatMap(({ reply }) => reply.paragraphs)
-  const targets = await Promise.all(
-    paragraphs.map(async ({ member, text }) => {
-      const open = await read($, memberOf(openStretches, { requestId: member }))
-      const parts = parse(text)
-      // A closed stretch with no words drawn to press, an empty short form with none before it, takes no letter.
-      const names = action === 'open' ? namesOf(parts) : undefined
-      return targetsIn(parts, open, action)
-        .filter(stretch => names?.get(stretch.key) !== '')
-        .map(stretch => ({ member, key: stretch.key }))
+    .map(({ reply }) => reply)
+}
+
+/**
+ * A letter for each of the first 26 stretches `action` can act on in the latest three replies on
+ * screen holding a stretch, newest first, in reading order within each; and those of the three with
+ * a stretch to act on, which `.` acts on whole.
+ */
+async function lettersFor($: EngineInterface, action: Action): Promise<{ targets: { letter: string; member: string; key: string }[]; replies: string[] }> {
+  const latest = (await newestFirst($, [...drawnReplies].filter(([, reply]) => reply.isOnScreen))).slice(0, LETTERED_REPLIES)
+  const perReply = await Promise.all(
+    latest.map(async reply => {
+      const targets = await Promise.all(
+        reply.paragraphs.map(async ({ member, text }) => {
+          const open = await read($, memberOf(openStretches, { requestId: member }))
+          const parts = parse(text)
+          // A closed stretch with no words drawn to press, an empty short form with none before it, takes no letter.
+          const names = action === 'open' ? namesOf(parts) : undefined
+          return targetsIn(parts, open, action)
+            .filter(stretch => names?.get(stretch.key) !== '')
+            .map(stretch => ({ member, key: stretch.key }))
+        }),
+      )
+      return { requestId: reply.requestId, targets: targets.flat() }
     }),
   )
+  const targets = perReply.flatMap(reply => reply.targets)
 
-  return targets.flat().slice(0, LETTERS.length).map((target, i) => ({ ...target, letter: LETTERS.charAt(i) }))
+  return {
+    targets: targets.slice(0, LETTERS.length).map((target, i) => ({ ...target, letter: LETTERS.charAt(i) })),
+    replies: perReply.filter(reply => reply.targets.length > 0).map(reply => reply.requestId),
+  }
+}
+
+/** A reply drawn in the terminal as its places, if it was drawn there and is still kept. */
+function terminalPlacesOf(requestId: string): ReplyPlaces | undefined {
+  const reply = drawnReplies.get(requestId)
+  return reply === undefined ? undefined : { requestId, paragraphs: reply.paragraphs }
+}
+
+/**
+ * A reply's places that hold its open stretches: in the terminal its paragraphs that hold a stretch,
+ * each drawn by a Client; in the desktop app the whole reply, as one member. `isDesktop` marks the
+ * second, whose stretches take no colour and whose links redraw from plugin state.
+ */
+type ReplyPlaces = { requestId: string; paragraphs: { member: string; text: string }[]; isDesktop?: true }
+
+/**
+ * Opens every stretch in `replies`, nested ones too, or closes every open one. The open stretches,
+ * what the next prompt's note names and each opened stretch's colour are kept here; a paragraph's
+ * Client, when one is drawn, is then asked to grow or shrink them all at once. Gives how many
+ * stretches it opened, or how many outermost ones it closed.
+ */
+async function openOrCloseAll($: EngineInterface, action: Action, replies: ReplyPlaces[]): Promise<number> {
+  let acted = 0
+  for (const { requestId, paragraphs, isDesktop } of replies) {
+    let hasOpened = false
+    for (const { member, text } of paragraphs) {
+      const opens = memberOf(openStretches, { requestId: member })
+      const open = await read($, opens)
+      const parts = parse(text)
+      const all = linkStretchesIn(parts)
+      const here = `${member.slice(requestId.length + 1)}#`
+      if (action === 'close') {
+        const outermost = all.filter(stretch => open.includes(stretch.key) && !open.includes(parentOf(stretch.key)))
+        if (outermost.length === 0) continue
+        acted += outermost.length
+        await update($, opens, () => [])
+        if (isDesktop) continue
+        await update($, memberOf(stretchOrder, { requestId }), ({ order, count }) => ({
+          order: Object.fromEntries(Object.entries(order).filter(([at]) => !at.startsWith(here))),
+          count,
+        }))
+      } else {
+        const opening = all.filter(stretch => !open.includes(stretch.key))
+        if (opening.length === 0) continue
+        acted += opening.length
+        hasOpened = true
+        await update($, opens, list => [...list, ...opening.map(stretch => stretch.key).filter(key => !list.includes(key))])
+        const names = namesOf(parts)
+        const opened = opening.map(stretch => openedOf(stretch, names))
+        await update($, seen, list => [...list, ...opened.filter(one => !list.some(was => isSameStretch(was, one)))])
+        if (isDesktop) continue
+        // Each takes the next count in reading order, a stretch before those inside it, as if
+        // clicked one after another, so a nested one skips its holder's colour.
+        await update($, memberOf(stretchOrder, { requestId }), ({ order, count }) => {
+          const next = { ...order }
+          let n = count
+          for (const { key } of opening) {
+            const at = hueAfter(n, next[`${here}${parentOf(key)}`])
+            next[`${here}${key}`] = at
+            n = at + 1
+          }
+          return { order: next, count: n }
+        })
+      }
+      if (!isDesktop) await update($, memberOf(askedStretch, { requestId: member }), last => ({ all: true, action, n: (last?.n ?? 0) + 1 }))
+    }
+    if (hasOpened && !isDesktop) await update($, newestReply, () => requestId)
+  }
+
+  return acted
 }
 
 /**

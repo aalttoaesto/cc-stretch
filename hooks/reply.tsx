@@ -1,9 +1,9 @@
 import type { ClientModule, ClientPointerEvent, ClientSurface, TextProps } from 'claude-code'
 
 import { grow, lengthOf } from './grow'
-import { continuationOf, hrefAt, isMarkup, isWebLink, layout, link, linkAt, namesOf, openedOf, targetsIn, tint, widthOf, withLeadIns } from './layout'
+import { continuationOf, hrefAt, isMarkup, isWebLink, layout, link, linkAt, linkStretchesIn, namesOf, openedOf, targetsIn, tint, widthOf, withLeadIns } from './layout'
 import type { Action, OpenedStretch, Row, Run } from './layout'
-import { closeAfter, drawnAs, KEY_SEPARATOR, parse } from './parse'
+import { closeAfter, drawnAs, KEY_SEPARATOR, parentOf, parse } from './parse'
 import { DEFAULT_LOOK, drawsHighlight, lookProps } from './look'
 import type { Hex } from './contrast'
 import type { DrawnLook } from './look'
@@ -20,8 +20,11 @@ import type { Segment, Stretch } from './parse'
  */
 export type Tint = { words: string; closer: string }
 
-/** A stretch the reader asked to open or close from the keyboard, numbered so each ask acts once. */
-type Ask = { key: string; action: Action; n: number }
+/**
+ * A stretch the reader asked to open or close from the keyboard, or every stretch in the paragraph
+ * (`all`), numbered so each ask acts once.
+ */
+export type Ask = { key: string; action: Action; n: number } | { all: true; action: Action; n: number }
 
 /** While letters show: whether typing one opens or closes, and the letter of each stretch they cover. */
 type Letters = { action: Action; keys: Record<string, string> }
@@ -74,8 +77,11 @@ type Selection = { anchor: Cell; head: Cell; isDragging: boolean; isWord?: true;
  * the first cell of a row that no word runs onto from the row before.
  */
 type WordCell = { segment: string; x: number; y: number; width: number; startsApart?: true }
-/** What is open, what is growing, the number of the last ask acted on, and what the reader selected. */
-type State = { open: string[]; growth: Growth | null; asked: number; selection: Selection | null }
+/**
+ * What is open, what is growing or shrinking (each stretch at its own pace, so a press never cuts
+ * short another stretch's growth), the number of the last ask acted on, and what the reader selected.
+ */
+type State = { open: string[]; growths: Growth[]; asked: number; selection: Selection | null }
 
 const FRAME_MS = 16
 // Two presses make a double-click when the second comes less than this long after the first and at
@@ -115,7 +121,7 @@ const pendingOpens = new WeakMap<object, { key: string; framesLeft: number; isRe
 const Reply: ClientModule<ReplyProps, State> = (props, surface) => {
   const { Box, Link, Text } = surface.elements
   // An ask made before this instance was drawn is not acted on again.
-  const fresh: State = { open: props.open, growth: null, asked: props.ask?.n ?? 0, selection: null }
+  const fresh: State = { open: props.open, growths: [], asked: props.ask?.n ?? 0, selection: null }
   if (surface.state === undefined) {
     surface.setState(fresh)
     surface.onPointer(event => pointer(surface, event))
@@ -178,7 +184,8 @@ function compose(segments: Segment[], state: State, tints: ReadonlyMap<string, T
     if (drawn === 'open') return stretch.long.length === 0 ? stretch.short : write(stretch.long)
     const colours = tints.get(stretch.key)
     const paint = (word: string) => (colours === undefined || isMarkup(word) ? word : tint(colours.words, word))
-    if (state.growth?.key === stretch.key) return grow(stretch.short, stretch.long, easeInOut(state.growth.progress), draw, paint)
+    const growth = state.growths.find(one => one.key === stretch.key)
+    if (growth !== undefined) return grow(stretch.short, stretch.long, easeInOut(growth.progress), draw, paint)
     if (!state.open.includes(stretch.key)) return link('open', stretch.key, stretch.short)
     const closer = link('close', stretch.key, '«')
     const long = grow(stretch.short, stretch.long, 1, draw, paint)
@@ -477,23 +484,65 @@ function openOrClose(surface: ClientSurface<State>, action: Action, key: string,
   const shown = drawn.get(surface)
   if (state === undefined || shown === undefined || !hasLink(shown.rows, action, key)) return false
 
-  // A stretch still shrinking when another press lands is closed at once, so what can be pressed is
-  // judged without it: a press inside it, or a letter put up before it closed, does nothing.
-  const open = state.growth !== null && !state.growth.isOpening ? closed(state.open, state.growth.key) : state.open
+  // A stretch still shrinking when another press lands is closed already, so what can be pressed is
+  // judged without it: a press inside it, or a letter put up before it closed, does nothing. It goes
+  // on shrinking, as a stretch still opening goes on growing.
+  const open = withoutShrinking(state)
   const stretch = targetsIn(shown.segments, open, action).find(one => one.key === key)
   if (stretch?.long === undefined) return false
-  const duration = 1000 * Math.min(1.4, 0.45 + lengthOf(stretch.long) / 70)
   const acted = asked ?? state.asked
+  const others = state.growths.filter(one => one.key !== stretch.key)
   if (action === 'open') {
     const next = [...open.filter(k => k !== stretch.key), stretch.key]
-    surface.setState({ open: next, growth: { key: stretch.key, isOpening: true, progress: 0, duration }, asked: acted, selection: null })
+    surface.setState({ open: next, growths: [...others, growthOf(stretch, true)], asked: acted, selection: null })
     surface.post({ open: next, opened: { ...openedOf(stretch, namesOf(shown.segments)), key: stretch.key } } satisfies ReplyPost)
   } else {
-    surface.setState({ open, growth: { key: stretch.key, isOpening: false, progress: 1, duration }, asked: acted, selection: null })
+    surface.setState({ open, growths: [...others, growthOf(stretch, false)], asked: acted, selection: null })
   }
   presses.delete(surface)
 
   return true
+}
+
+/**
+ * Opens every stretch in the paragraph, nested ones too, each growing at once; or closes every open
+ * one, each outermost one shrinking and taking those inside it along. The hooks module, which asked,
+ * has already recorded what this opens, so the post carries only the open stretches.
+ */
+function openOrCloseAll(surface: ClientSurface<State>, action: Action, asked: number): void {
+  const state = surface.state
+  const shown = drawn.get(surface)
+  if (state === undefined || shown === undefined) return
+  const open = withoutShrinking(state)
+  const all = linkStretchesIn(shown.segments)
+  const acting =
+    action === 'open'
+      ? all.filter(stretch => !open.includes(stretch.key))
+      : all.filter(stretch => open.includes(stretch.key) && !open.includes(parentOf(stretch.key)))
+  const keys = new Set(acting.map(stretch => stretch.key))
+  // A stretch still opening turns back from where it got to, so no word jumps.
+  const turned = (stretch: Stretch): Growth => {
+    const growth = growthOf(stretch, action === 'open')
+    const before = state.growths.find(one => one.key === stretch.key)
+    return before === undefined ? growth : { ...growth, progress: before.progress }
+  }
+  const growths = [...state.growths.filter(one => !keys.has(one.key)), ...acting.map(turned)]
+  const next = action === 'open' ? [...open, ...acting.map(stretch => stretch.key)] : open
+  surface.setState({ open: next, growths, asked, selection: null })
+  presses.delete(surface)
+  pendingOpens.delete(surface)
+  if (action === 'open' && acting.length > 0) surface.post({ open: next } satisfies ReplyPost)
+}
+
+/** A growth of `stretch` from its start: opening from its short form, or closing from its long form. */
+function growthOf(stretch: Stretch, isOpening: boolean): Growth {
+  const duration = 1000 * Math.min(1.4, 0.45 + lengthOf(stretch.long ?? []) / 70)
+  return { key: stretch.key, isOpening, progress: isOpening ? 0 : 1, duration }
+}
+
+/** The open stretches without those still shrinking, and the stretches inside them. */
+function withoutShrinking(state: State): string[] {
+  return state.growths.filter(one => !one.isOpening).reduce((open, one) => closed(open, one.key), state.open)
 }
 
 /** Opens the stretch a click on lead-in words is waiting to open; false when it could not. */
@@ -510,21 +559,22 @@ function tick(surface: ClientSurface<State>) {
   const state = surface.state
   const ask = asks.get(surface)
   if (state !== undefined && ask !== undefined && ask.n > state.asked) {
+    if ('all' in ask) openOrCloseAll(surface, ask.action, ask.n)
     // The ask is spent with no change when its stretch cannot be pressed for it.
-    if (!openOrClose(surface, ask.action, ask.key, ask.n)) surface.setState({ ...state, asked: ask.n })
+    else if (!openOrClose(surface, ask.action, ask.key, ask.n)) surface.setState({ ...state, asked: ask.n })
     return
   }
-  if (state?.growth == null) return
-  const { growth } = state
-  const progress = growth.progress + ((growth.isOpening ? 1 : -1) * FRAME_MS) / growth.duration
-  if (progress > 0 && progress < 1) {
-    surface.setState({ ...state, growth: { ...growth, progress } })
-    return
-  }
+  if (state === undefined || state.growths.length === 0) return
+  const moved = state.growths.map(one => ({ ...one, progress: one.progress + ((one.isOpening ? 1 : -1) * FRAME_MS) / one.duration }))
+  const isGoing = (one: Growth) => one.progress > 0 && one.progress < 1
+  const ended = moved.filter(one => !isGoing(one))
   // A shrunk stretch, and every stretch inside it, leaves the open list as its growth ends.
-  const open = growth.isOpening ? state.open : closed(state.open, growth.key)
-  surface.setState({ ...state, open, growth: null })
-  if (!growth.isOpening) surface.post({ open } satisfies ReplyPost)
+  const shrunk = ended.filter(one => !one.isOpening)
+  const open = shrunk.reduce((list, one) => closed(list, one.key), state.open)
+  // A growth inside a stretch that has shrunk shut ends with it.
+  const isInShrunk = (one: Growth) => shrunk.some(holder => one.key.startsWith(`${holder.key}${KEY_SEPARATOR}`))
+  surface.setState({ ...state, open, growths: moved.filter(one => isGoing(one) && !isInShrunk(one)) })
+  if (shrunk.length > 0) surface.post({ open } satisfies ReplyPost)
 }
 
 /** Whether `rows` draw a link that does `action` to stretch `key`. */

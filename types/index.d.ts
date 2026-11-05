@@ -21,15 +21,16 @@ declare module 'claude-code' {
       newest: string
       /**
        * Per paragraph of a reply drawn by a Client: the stretch the reader last asked to open or close
-       * from the keyboard, numbered so each ask acts once; null before any.
+       * from the keyboard, or every stretch in it (`all`), numbered so each ask acts once; null before any.
        */
-      ask: StateFamily<{ key: string; action: 'open' | 'close'; n: number } | null>
+      ask: StateFamily<{ key: string; action: 'open' | 'close'; n: number } | { all: true; action: 'open' | 'close'; n: number } | null>
       /**
        * While letters show, until the next edit or other change to the prompt, a submitted prompt or
-       * their chord again: whether they open or close, and each one's stretch, by paragraph member
-       * and stretch key; null while none show.
+       * their chord again: whether they open or close, each one's stretch, by paragraph member and
+       * stretch key, and the request ids of the replies they cover, which `.` opens or closes whole
+       * (absent in letters an earlier version put up); null while none show.
        */
-      lettering: { action: 'open' | 'close'; targets: { letter: string; member: string; key: string }[] } | null
+      lettering: { action: 'open' | 'close'; targets: { letter: string; member: string; key: string }[]; replies?: string[] } | null
       /** The style the toolbar is trying (marks, highlight: a hex colour, `tinted` or empty), drawn in place of the saved one until saved; null for none. */
       look: { marks: string[]; highlight: string } | null
       /** Whether /cc-stretch:style has the toolbar open. */

@@ -59,6 +59,21 @@ into `<outDir>`, and exits 1 if a step failed; `node film/e2e/render.mjs <outDir
 - **Gotchas:** with `CLAUDE_CODE_NO_FLICKER=0` the session draws on the main screen, where every
   stretch is drawn open and nothing is pressable.
 
+### Open or close every stretch
+
+- **Reach:** a reply with two paragraphs that hold stretches, one of them nested; ask for "a nested
+  stretch and another paragraph with a stretch" in the prompt.
+- **Drive:**
+  1. Press alt+↓: letters show, and the reply's `⏺` reads `.`.
+  2. Type `.`: the letters go, nothing is typed, and every stretch grows at once, nested ones
+     inside their holders, with no word already on screen moving to another row.
+  3. Press alt+↑, then `.`: every stretch shrinks back to its short form.
+  4. Run `/cc-stretch:open-all`, then `/cc-stretch:close-all`: each says how many stretches it
+     opened or closed in the latest reply, and the reply grows and shrinks as in 2 and 3.
+- **Writes:** nothing.
+- **Gotchas:** as of Claude Code 2.1.301 alt+↓ and alt+↑ scroll the diff panel's file list while
+  that panel is open with more than eight files.
+
 ### Select text in a paragraph that holds a stretch
 
 - **Reach:** a press on text or on a stretch, dragged, or two on one word, inside such a paragraph.

@@ -1867,6 +1867,125 @@ describe('keyboard', () => {
     await older.unmount()
     await newer.unmount()
   })
+
+  describe('every stretch at once', () => {
+    const OPEN = 'The build fails because the cache key hashes only package.json, set in ci/cache.ts « «.'
+    const CLOSED = 'The build fails on a stale cache.\nBraces in code stay: {{a|b}}.'
+    const bullet = async (ui: Mounted) => (await ui.find({ key: 'open-letters' }))?.props.label
+    const run = ($: Engine, action: 'open' | 'close', isFullscreen = true) =>
+      $.command.run({ command: `cc-stretch:${action}-all`, args: '', origin: { kind: 'composer' }, presentation: { isFullscreen, columns: 100 } })
+
+    test('with the open letters up, . opens every stretch in the reply, nested ones too, growing them all at once', async ($, on) => {
+      engine(on)
+      const ui = await mountReply($, FULLSCREEN)
+      expect(await bullet(ui)).toBe('⏺')
+      await down(ui)
+      // The bullet shows the key that opens all of the reply.
+      expect(await bullet(ui)).toBe('.')
+      expect(await type($, '.')).toBe('')
+      expect(await both(ui)).toEqual([])
+      expect(await bullet(ui)).toBe('⏺')
+      // They grow from their short forms rather than appear whole.
+      await ui.advance(100)
+      expect(await textIn(ui)).not.toContain('ci/cache.ts')
+      await ui.advance(2000)
+      expect(await textIn(ui)).toContain(OPEN)
+      expect(await textIn(ui, 'paragraph-1')).toContain('Add the lockfile to the key:')
+      await ui.unmount()
+    })
+
+    test('with the close letters up, . closes every stretch, and the note names each one opened', async ($, on) => {
+      engine(on)
+      let context: readonly string[] | undefined
+      on('prompt.submit', (_, e) => {
+        context = e.context
+        return { text: e.text, context: e.context }
+      })
+      const ui = await mountReply($, FULLSCREEN)
+      await down(ui)
+      await type($, '.')
+      await ui.advance(2000)
+      await up(ui)
+      expect(await bullet(ui)).toBe('.')
+      expect(await type($, '.')).toBe('')
+      await ui.advance(2000)
+      expect(await textIn(ui)).toBe(CLOSED)
+      expect(await textIn(ui, 'paragraph-1')).toBe('The fix is one line.')
+
+      await $.prompt.submit({ text: 'ok', wait: false, origin: { kind: 'composer' } })
+      expect(context).toEqual(['Stretchtext: since your last reply the reader opened "on a stale cache", ", set in one file", "The fix is one line.".'])
+      await ui.unmount()
+    })
+
+    test('the words each stretch adds take their colours, as if opened one after another', async ($, on) => {
+      const text = 'One {{cat|cat, black,}} and {{dog|dog, brown,}} here.'
+      engine(on, [text])
+      const ui = await mountReply($, FULLSCREEN, text)
+      const colourOf = async (word: string) => (await ui.findAll({ type: 'Text', in: FIRST })).find(piece => piece.text?.trim() === word)?.props.color
+      await down(ui)
+      await type($, '.')
+      await ui.advance(2000)
+      expect(await textIn(ui)).toBe('One cat, black, « and dog, brown, « here.')
+      expect(await colourOf('black,')).toBe('#a6904d')
+      expect(await colourOf('brown,')).toBe(SOFT[1])
+      await ui.unmount()
+    })
+
+    test('a stretch still growing goes on growing when the reader opens another', async ($, on) => {
+      const text = 'One {{cat|cat, black and very sleepy,}} and {{dog|dog, brown,}} here.'
+      engine(on, [text])
+      const ui = await mountReply($, FULLSCREEN, text)
+      await pressOn(ui, 'cat')
+      await ui.advance(100)
+      await pressOn(ui, 'dog')
+      expect(await textIn(ui)).not.toContain('sleepy, «')
+      await ui.advance(2000)
+      expect(await textIn(ui)).toBe('One cat, black and very sleepy, « and dog, brown, « here.')
+      await ui.unmount()
+    })
+
+    test('/cc-stretch:open-all and /cc-stretch:close-all act on the latest reply, and say when there is nothing to do', async ($, on) => {
+      engine(on)
+      const ui = await mountReply($, FULLSCREEN)
+      expect((await run($, 'close')).text).toBe('No stretch in the latest reply is open.')
+      expect((await run($, 'open')).text).toBe('Opened 3 stretches in the latest reply.')
+      await ui.advance(2000)
+      expect(await textIn(ui)).toContain(OPEN)
+      expect((await run($, 'open')).text).toBe('Every stretch in the latest reply is already open.')
+      // Closing counts the outermost stretches, which take those inside them along.
+      expect((await run($, 'close')).text).toBe('Closed 2 stretches in the latest reply.')
+      await ui.advance(2000)
+      expect(await textIn(ui)).toBe(CLOSED)
+      await ui.unmount()
+    })
+
+    test('a paragraph drawn after /cc-stretch:open-all is drawn open, without growing again', async ($, on) => {
+      engine(on)
+      const ui = await mountReply($, FULLSCREEN)
+      await run($, 'open')
+      await ui.unmount()
+      const again = await mountReply($, FULLSCREEN)
+      expect(await textIn(again)).toContain(OPEN)
+      await again.unmount()
+    })
+
+    test('in the desktop app, /cc-stretch:open-all opens every link in place and /cc-stretch:close-all closes them', async ($, on) => {
+      engine(on)
+      const ui = await mountReply($, FULLSCREEN, REPLY, 'desktop', 'reply-desktop')
+      expect((await run($, 'open')).text).toBe('Opened 3 stretches in the latest reply.')
+      expect(await shown(ui)).toContain(', set in `ci/cache.ts`')
+      expect(await shown(ui)).toContain('key: {{hash}}')
+      await run($, 'close')
+      expect(await shown(ui)).toContain(`The build fails [on a stale cache](${HREF}open/0).`)
+      await ui.unmount()
+    })
+
+    test('on the main screen the commands say every stretch is drawn open there', async ($, on) => {
+      on('session.surfaces', () => ({ value: ['terminal'] }))
+      on('session.messages', () => ({ value: [{ role: 'assistant', text: 'A reply written {{elsewhere|somewhere else}}.', toolUses: [] }] }))
+      expect((await run($, 'open', false)).text).toContain('Every stretch is drawn open on the main screen')
+    })
+  })
 })
 
 describe('tool calls', () => {

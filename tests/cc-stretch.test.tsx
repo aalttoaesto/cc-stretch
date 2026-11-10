@@ -5,7 +5,7 @@ import type { Engine } from 'claude-code/testing'
 import { grow } from '../hooks/grow'
 import { contrastOn } from '../hooks/contrast'
 import { DEFAULT_LOOK, lookOf, marksSetting } from '../hooks/look'
-import { hrefAt, layout, leadInOf, link, linkAt, namesOf, tint, widthOf, withLeadIns } from '../hooks/layout'
+import { asArriving, hrefAt, layout, leadInOf, link, linkAt, namesOf, tint, widthOf, withLeadIns } from '../hooks/layout'
 import { closeAfter, hideLongForms, newStreamState, paragraphsOf, parse, stretches } from '../hooks/parse'
 import Reply from '../hooks/reply'
 
@@ -24,9 +24,11 @@ const FULLSCREEN = { columns: 100, rows: 40, isFullscreen: true }
 const MAIN_SCREEN = { columns: 100, rows: 40, isFullscreen: false }
 const HREF = 'https://cc-stretch.invalid/'
 const FIRST = 'paragraph-0'
-// The dark theme's colours for a closed stretch's tinted highlight, and for the words it adds once open, by place.
+// The dark palette's colours for a closed stretch's tinted highlight, and for the words it adds once open, by place.
 const DEEP = ['#403002', '#2c2240', '#122623', '#361e16'] as const
 const SOFT = ['#ffdd77', '#d3bdff', '#9ac5c0', '#e9b4a3'] as const
+/** The theme row of the settings menu, as `config.list` gives it, holding the setting `value`. */
+const themeRow = (value: string) => ({ key: 'theme', label: 'Theme', kind: 'choice', value, provider: { plugin: 'engine', tier: 'core' }, isLocked: false }) as const
 const COMPOSE = {
   model: 'claude-opus-5-5',
   promptModel: 'claude-opus-5-5',
@@ -66,6 +68,9 @@ const rowsOf = async (ui: Mounted, key = FIRST): Promise<string[]> => {
   return (Array.isArray(children) ? children.flat(Infinity) : [children]).map(textOf)
 }
 const textIn = async (ui: Mounted, key = FIRST) => (await rowsOf(ui, key)).join('\n')
+/** The colour of each Text a paragraph's Client draws that reads `text`, spaces around it aside, in reading order. */
+const coloursOf = async (ui: Mounted, text: string, key = FIRST) =>
+  (await ui.findAll({ type: 'Text', in: key })).filter(piece => piece.text?.trim() === text).map(piece => piece.props.color)
 
 /** Presses `phrase` where the Client drew it, as a mouse does: down, then up. The last one when `last`. */
 const pressOn = async (ui: Mounted, phrase: string, { key = FIRST, last = false } = {}) => {
@@ -580,6 +585,83 @@ describe('layout', () => {
     expect(rows[1]?.map(run => run.text).join('')).toBe('  let x = {{y}}')
   })
 
+  describe('italics', () => {
+    /** A line's runs as text, each italic one between slashes. */
+    const drawn = (text: string) => (layout(text, 200)[0] ?? []).map(run => (run.italic ? `/${run.text}/` : run.text)).join('')
+
+    test('an underscore marks italics as a star does, and neither mark is drawn', () => {
+      expect(drawn('Retry _only_ on ARM, where the *only* step runs _at most once_.')).toBe('Retry /only/ on ARM, where the /only/ step runs /at most once/.')
+    })
+
+    test('an underscore inside a word, or beside another underscore, is text', () => {
+      const names = 'Call snake_case, my_var_name and __init__ here.'
+      expect(drawn(names)).toBe(names)
+    })
+
+    test('an opening mark with no closing mark on its line is text', () => {
+      const lone = 'Set _id on it, match *.ts files, or 5 * 3.'
+      expect(drawn(lone)).toBe(lone)
+    })
+
+    test('a closing mark pairs with the nearest opening mark of its kind before it', () => {
+      expect(drawn('Set _id and _name, then _commit_.')).toBe('Set _id and _name, then /commit/.')
+    })
+
+    test('italics close only on the mark that opened them', () => {
+      expect(drawn('A *star_ and star* here.')).toBe('A /star_ and star/ here.')
+      expect(drawn('An _under* and under_ here.')).toBe('An /under* and under/ here.')
+    })
+
+    test('italics of one mark hold beside an unpaired mark of the other, and inside italics of the other', () => {
+      expect(drawn('Glob *.ts, keep _id, and run it _at most once_ and *never* twice.')).toBe('Glob *.ts, keep _id, and run it /at most once/ and /never/ twice.')
+      expect(drawn('A *star _inside_ star* here.')).toBe('A /star inside star/ here.')
+      expect(drawn('Then *a _b* c_ ends.')).toBe('Then /a _b/ c_ ends.')
+    })
+
+    test('a code span, a link label and a URL keep their underscores, inside italics too', () => {
+      const runs = layout('_See `a_b` and_ [c_d](https://x.invalid/e_f) or https://x.invalid/g_h_i.', 200)[0] ?? []
+      expect(runs.map(run => run.text).join('')).toBe('See a_b and c_d or https://x.invalid/g_h_i.')
+      expect(runs.filter(run => run.italic).map(run => run.text)).toEqual(['See ', 'a_b', ' and'])
+      const link = (layout('Read _https://x.invalid/a_b_ first.', 200)[0] ?? []).find(run => run.href)
+      expect(link).toMatchObject({ text: 'https://x.invalid/a_b', href: 'https://x.invalid/a_b', italic: true })
+    })
+
+    test('a mark is read by the characters drawn beside it, passing over a pressable phrase\'s frame', () => {
+      const word = link('open', 'k', 'word')
+      const runs = layout(`${word}_x_ and _${word}_y_`, 200)[0] ?? []
+      expect(runs.map(run => run.text).join('')).toBe('word_x_ and word_y')
+      expect(runs.filter(run => run.italic).map(run => run.text)).toEqual(['word', '_y'])
+      expect(runs.filter(run => run.link).map(run => run.text)).toEqual(['word', 'word'])
+    })
+
+    test('a letter that takes two code units is a letter beside an underscore', () => {
+      for (const names of ['𝑥_a_', '_a_𝑥']) expect(drawn(names)).toBe(names)
+    })
+
+    test('an arriving mark that has met no closing mark is not drawn, and the arriving text after it is italic', () => {
+      expect(drawn(`Short, with ${asArriving('_at most')}`)).toBe('Short, with /at most/')
+      expect(drawn(`Short, with ${asArriving('_at most')} and the rest.`)).toBe('Short, with /at most/ and the rest.')
+    })
+
+    test('an unpaired mark in text already drawn stays text next to arriving text', () => {
+      expect(drawn(`Keep _id, then ${asArriving('*two more')}`)).toBe('Keep _id, then /two more/')
+    })
+
+    test('a rule or a fence line is left bare by the arriving marks, so it is still read as one', () => {
+      expect(asArriving(['a', '---', '```ts', 'b', '```'].join('\n')).split('\n').map(line => /^[\ufdd5]/.test(line))).toEqual([true, false, false, true, false])
+    })
+
+    // The mark stands in a word the short form holds too, or apart from any word, as in text without spaces.
+    for (const [short, long] of [['Use the cache.', 'Use _the cache for every build_.'], ['缓存。', '使用*缓存和索引*加速。']] as const) {
+      test(`no frame of ${long} growing from ${short} draws its opening mark before its closing one`, () => {
+        for (let step = 0; step < 20; step += 1) {
+          const frame = (layout(asArriving(grow(short, parse(long), step / 20, () => '')), 200)[0] ?? []).map(run => run.text).join('')
+          expect(frame).not.toMatch(/[*_]/)
+        }
+      })
+    }
+  })
+
   test('a code span or a link label tinted word by word draws whole, and the tint ends where its words do', async () => {
     const added = (word: string) => tint('#d3bdff', word)
     const text = `${added('Run')} ${added('`claude')} ${added('plugin')} install\` and ${added('[the')} ${added('docs')} page](https://x.invalid/a) now`
@@ -777,9 +859,24 @@ test('half a code span drawn by a growing long form never draws the marks of a l
   for (let frame = 0; frame < 120; frame += 1) {
     await ui.advance(16)
     const shown = await textIn(ui)
-    expect(shown).not.toMatch(/[\ufdd0-\ufdd4]/)
+    expect(shown).not.toMatch(/[\ufdd0-\ufdd6]/)
   }
   expect(await textIn(ui)).toBe('Run npm run test:unit -- --watch once. « Then merge main.')
+  await ui.unmount()
+})
+
+test('underscore italics in a long form grow without their marks, and an unpaired mark already drawn stays as it is', async $ => {
+  const ui = await mountReply($, FULLSCREEN, 'Keep _id. {{Short.|Short, with an _emphasised_ word and _two more_ here.}}')
+  await pressOn(ui, 'Short.')
+  for (let frame = 0; frame < 120; frame += 1) {
+    await ui.advance(16)
+    const shown = await textIn(ui)
+    expect(shown.startsWith('Keep _id. ')).toBe(true)
+    expect(shown.slice('Keep _id. '.length)).not.toContain('_')
+  }
+  expect(await textIn(ui)).toBe('Keep _id. Short, with an emphasised word and two more here. «')
+  const italic = (await ui.findAll({ type: 'Text', in: FIRST })).filter(piece => piece.props.italic === true).map(piece => piece.text)
+  expect(italic).toEqual(['emphasised', 'two more'])
   await ui.unmount()
 })
 
@@ -1197,6 +1294,7 @@ test('the words a stretch adds take its colour, faded once another opens or the 
   const text = 'One {{cat|cat, black,}} and {{dog|dog, brown,}} here.'
   on('session.messages', () => ({ value: [{ role: 'assistant', text, toolUses: [] }] }))
   on('prompt.submit', (_, e) => ({ text: e.text, context: e.context }))
+  on('config.list', () => ({ value: [themeRow('dark')] }))
   const ui = await mountReply($, FULLSCREEN, text)
   const colourOf = async (text: string) => (await ui.findAll({ type: 'Text', in: FIRST })).find(piece => piece.text?.trim() === text)?.props.color
   await pressOn(ui, 'cat')
@@ -1217,6 +1315,40 @@ test('the words a stretch adds take its colour, faded once another opens or the 
   expect(await colourOf('brown,')).toBe('#897ba6')
   await ui.unmount()
 })
+
+// As of Claude Code 2.1.322 the theme row holds the setting, so none of these says whether the screen is
+// light or dark; undefined leaves `config.list` unanswered, which fails the read. The custom theme's
+// name holds `light` without starting with it.
+for (const [name, rows] of [
+  ['the auto theme', [themeRow('auto')]],
+  ['a custom theme', [themeRow('custom:light-paper')]],
+  ['no theme row', []],
+  ['a settings list that fails', undefined],
+] as const) {
+  test(`under ${name} the words a stretch adds take the theme's own colours by key, and none fades`, async ($, on) => {
+    if (rows !== undefined) on('config.list', () => ({ value: [...rows] }))
+    const ui = await mountReply($, FULLSCREEN, 'One {{cat|cat, black,}} and {{dog|dog, brown,}} here.')
+    await pressOn(ui, 'cat')
+    await ui.advance(2000)
+    await pressOn(ui, 'dog')
+    await ui.advance(2000)
+    expect(await coloursOf(ui, 'black,')).toEqual(['warning'])
+    expect(await coloursOf(ui, 'brown,')).toEqual(['autoAccept'])
+    expect(await coloursOf(ui, '«')).toEqual(['warning', 'autoAccept'])
+    await ui.unmount()
+  })
+}
+
+for (const [theme, colour] of [['dark-daltonized', SOFT[0]], ['light-ansi', '#533b11']] as const) {
+  test(`the ${theme} theme names its palette by how its name starts`, async ($, on) => {
+    on('config.list', () => ({ value: [themeRow(theme)] }))
+    const ui = await mountReply($, FULLSCREEN, 'One {{cat|cat, black,}} here.')
+    await pressOn(ui, 'cat')
+    await ui.advance(2000)
+    expect(await coloursOf(ui, 'black,')).toEqual([colour])
+    await ui.unmount()
+  })
+}
 
 test('a short form written over several lines is drawn open in the terminal too', async $ => {
   const ui = await mountReply($, FULLSCREEN, ['Two steps: {{- one', '- two|- one, first', '- two, second}}'].join('\n'))
@@ -1538,6 +1670,67 @@ test('the system prompt carries the guide while something draws', async ($, on) 
   expect(drawn.sections.at(-1)?.id).toBe('cc-stretch:guide')
   const headless = await $.prompt.compose({ ...COMPOSE, surfaces: [] })
   expect(headless.sections.some(s => s.id === 'cc-stretch:guide')).toBe(false)
+})
+
+describe('a guide Claude Code never asks for', () => {
+  const ASKED: SessionMessage[] = [
+    { role: 'user', text: 'why does CI fail?', toolUses: [] },
+    { role: 'assistant', text: 'The cache is stale.', toolUses: [] },
+  ]
+  /** The dim lines the plugin writes into the transcript, with the session's messages read from `session.messages`. */
+  const session = (on: On) => {
+    const held: { said: string[]; messages: SessionMessage[] } = { said: [], messages: [] }
+    on('ui.log', (_, e) => {
+      held.said.push(e.text)
+      return { value: undefined }
+    })
+    on('session.messages', () => ({ value: held.messages }))
+    on('prompt.submit', (_, e) => ({ text: e.text, context: e.context }))
+    on('prompt.compose', () => ({ sections: [] }))
+    return held
+  }
+  const prompt = ($: Engine, text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } })
+
+  test('the prompt after a reply written without it says why Claude writes no stretches, once', async ($, on) => {
+    const held = session(on)
+    await prompt($, 'why does CI fail?')
+    // A prompt that got no reply, such as a command, shows nothing yet.
+    await prompt($, '/help')
+    expect(held.said).toEqual([])
+
+    held.messages = ASKED
+    await prompt($, 'and?')
+    expect(held.said.length).toBe(1)
+    expect(held.said[0]).toContain('has not asked this plugin for its writing guide')
+    expect(held.said[0]).toContain('managed settings')
+
+    await prompt($, 'ok')
+    expect(held.said.length).toBe(1)
+  })
+
+  for (const surfaces of [['terminal'], []] satisfies RenderSurface[][]) {
+    test(`nothing is said once Claude Code has asked for it with ${surfaces.length === 0 ? 'nothing' : surfaces.join(' and ')} drawing`, async ($, on) => {
+      const held = session(on)
+      await prompt($, 'why does CI fail?')
+      await $.prompt.compose({ ...COMPOSE, surfaces })
+      held.messages = ASKED
+      await prompt($, 'and?')
+      expect(held.said).toEqual([])
+    })
+  }
+
+  test('a reply from before the plugin loaded says nothing, a later one does', async ($, on) => {
+    const held = session(on)
+    held.messages = ASKED
+    // A command draws no reply and no ask, so the reply that stands is still the one from before.
+    await prompt($, '/help')
+    await prompt($, 'and?')
+    expect(held.said).toEqual([])
+
+    held.messages = [...ASKED, { role: 'user', text: 'and?', toolUses: [] }, { role: 'assistant', text: 'Its key hashes one file.', toolUses: [] }]
+    await prompt($, 'ok')
+    expect(held.said.length).toBe(1)
+  })
 })
 
 test('the next prompt tells the model which stretches were opened and which not', async ($, on) => {
@@ -1920,6 +2113,7 @@ describe('keyboard', () => {
     test('the words each stretch adds take their colours, as if opened one after another', async ($, on) => {
       const text = 'One {{cat|cat, black,}} and {{dog|dog, brown,}} here.'
       engine(on, [text])
+      on('config.list', () => ({ value: [themeRow('dark')] }))
       const ui = await mountReply($, FULLSCREEN, text)
       const colourOf = async (word: string) => (await ui.findAll({ type: 'Text', in: FIRST })).find(piece => piece.text?.trim() === word)?.props.color
       await down(ui)
@@ -2075,12 +2269,13 @@ describe('style', () => {
     await ui.unmount()
   })
 
-  test('an opened stretch keeps its tint under a style with dim and a highlight', { options: { marks: 'bold,dim', highlight: '#264f78' } }, async $ => {
+  test('an opened stretch keeps its tint under a style with dim and a highlight', { options: { marks: 'bold,dim', highlight: '#264f78' } }, async ($, on) => {
+    on('config.list', () => ({ value: [themeRow('dark')] }))
     const ui = await mountReply($, FULLSCREEN)
     await pressOn(ui, 'on a stale cache')
     await ui.advance(2000)
     const closer = (await ui.findAll({ type: 'Text', in: FIRST })).find(piece => piece.text === '«')?.props
-    expect(closer?.color).toMatch(/^#/)
+    expect(closer?.color).toBe(SOFT[0])
     expect(closer).not.toHaveProperty('backgroundColor')
     expect(closer).not.toHaveProperty('dimColor')
     expect(closer).toMatchObject({ bold: true })
@@ -2114,7 +2309,8 @@ describe('style', () => {
       await ui.unmount()
     })
 
-    test('an opened stretch takes the colour of its place, not of the order it was opened in', { options: { highlight: 'tinted' } }, async $ => {
+    test('an opened stretch takes the colour of its place, not of the order it was opened in', { options: { highlight: 'tinted' } }, async ($, on) => {
+      on('config.list', () => ({ value: [themeRow('dark')] }))
       const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
       await pressOn(ui, 'two')
       await ui.advance(2000)
@@ -2142,11 +2338,45 @@ describe('style', () => {
     })
 
     test('on the light theme each closed stretch is highlighted pale, its text dark', { options: { highlight: 'tinted' } }, async ($, on) => {
-      const theme = { key: 'theme', label: 'Theme', kind: 'choice', value: 'light', provider: { plugin: 'engine', tier: 'core' }, isLocked: false } as const
-      on('config.list', () => ({ value: [theme] }))
+      on('config.list', () => ({ value: [themeRow('light')] }))
       const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
       expect(await phraseProps(ui, 'one')).toMatchObject({ backgroundColor: '#e5dac7', color: '#1c1c1c' })
       expect(await backgroundOf(ui, 'two')).toBe('#e1bfff')
+      await ui.unmount()
+    })
+
+    test('under the auto theme each closed stretch keeps the dark palette\'s highlight, and an opened one\'s words take the theme\'s own colour of its place', { options: { highlight: 'tinted' } }, async ($, on) => {
+      on('config.list', () => ({ value: [themeRow('auto')] }))
+      const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
+      expect(await phraseProps(ui, 'one')).toMatchObject({ backgroundColor: DEEP[0], color: '#f2f2f2' })
+      await pressOn(ui, 'two')
+      await ui.advance(2000)
+      expect(await coloursOf(ui, 'more')).toEqual(['autoAccept'])
+      await ui.unmount()
+    })
+
+    test('palette light draws the light theme\'s colours under the auto theme, in any case', { options: { highlight: 'tinted', palette: ' Light ' } }, async ($, on) => {
+      on('config.list', () => ({ value: [themeRow('auto')] }))
+      const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
+      expect(await phraseProps(ui, 'one')).toMatchObject({ backgroundColor: '#e5dac7', color: '#1c1c1c' })
+      await pressOn(ui, 'two')
+      await ui.advance(2000)
+      const added = (await ui.findAll({ type: 'Text', in: FIRST })).filter(piece => piece.text.trim() === 'more')
+      expect(added.map(piece => piece.props.color)).toEqual(['#4a008c'])
+      await ui.unmount()
+    })
+
+    test('palette dark keeps the dark theme\'s colours under the light theme', { options: { highlight: 'tinted', palette: 'dark' } }, async ($, on) => {
+      on('config.list', () => ({ value: [themeRow('light')] }))
+      const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
+      expect(await backgroundOf(ui, 'one')).toBe(DEEP[0])
+      await ui.unmount()
+    })
+
+    test('a palette that names neither light nor dark follows the theme setting', { options: { highlight: 'tinted', palette: 'solarized' } }, async ($, on) => {
+      on('config.list', () => ({ value: [themeRow('light')] }))
+      const ui = await mountReply($, FULLSCREEN, 'A {{one|one more}} and {{two|two more}}.')
+      expect(await backgroundOf(ui, 'one')).toBe('#e5dac7')
       await ui.unmount()
     })
   })

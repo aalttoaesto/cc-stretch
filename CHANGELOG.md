@@ -26,6 +26,41 @@
 - The README says that on a Team or Enterprise plan, or with managed settings, Claude never writes
   stretches, and why ([#3](https://github.com/pro-vi/cc-stretch/issues/3)).
 
+## 0.5.6 — 2026-11-10
+
+- On a machine with managed settings, or on a Team or Enterprise account, cc-stretch now says why
+  replies come with no stretches. As of Claude Code 2.1.322 its built-in plugin
+  `cc-plugin-sec-default` runs there and keeps the system prompt out of reach of every plugin a
+  person installs, so cc-stretch's guide never reaches Claude
+  ([#3](https://github.com/pro-vi/cc-stretch/issues/3)). At the prompt after the first reply written
+  that way, one dim line in the transcript says so, and that only the organization's administrator
+  can change it, in its managed settings. cc-stretch does not send the guide another way, which
+  would go around that control. The README's Limits names the limit. The line is not checked on a
+  machine that has managed settings. The debug log that names the cause is @dcerisier's.
+- `bench/depth.ts` counts, from session transcripts, how often a reply of 150 words or more holds a
+  stretch, by how deep into its session it came, and only where the request carried the guide. On
+  667 of my transcripts 1,137 of 1,171 such replies held one (97%), and 319 of 342 at 400k context
+  tokens and over (93%).
+
+## 0.5.5 — 2026-11-10
+
+- On a light screen with Claude Code's theme set to `auto`, the words an opened stretch adds can
+  be read. Before, they took the colours meant for a dark screen, pale on white
+  ([#24](https://github.com/pro-vi/cc-stretch/issues/24)). As of Claude Code 2.1.322 a plugin reads
+  the theme setting, not the theme the screen shows. So under `auto` or a custom theme the added
+  words now take the theme's own colours, which Claude Code draws for the screen it shows: they are
+  not softened, and a stretch opened earlier does not fade. Under a theme whose name starts with
+  `light` or `dark`, nothing changes.
+- A new setting, `palette`, picks the light or the dark stretch colours whatever the theme setting
+  says: `light` or `dark`, in `/plugin`'s Configure options. Contributed by @lamemind in
+  [#25](https://github.com/pro-vi/cc-stretch/pull/25).
+- In a paragraph that holds a stretch, `_text_` is drawn in italics, as `*text*` is. Before, the
+  underscores were drawn as written. `snake_case`, `__init__` and a lone `_id` stay as written
+  ([#23](https://github.com/pro-vi/cc-stretch/issues/23)). Reported by @KrishivVora, whose list of
+  cases the fix follows.
+- There too, a `*` with no closing `*` on its line is drawn as written. Before, as in `*.ts`, it
+  was not drawn and the rest of its line turned italic.
+
 ## 0.5.4 — 2026-10-24
 
 - When a stretch's long form ends in a code block and Claude puts the stretch's closing braces on

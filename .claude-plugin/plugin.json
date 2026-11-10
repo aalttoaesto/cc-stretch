@@ -1,6 +1,6 @@
 {
   "name": "cc-stretch",
-  "version": "0.5.4",
+  "version": "0.5.6",
   "description": "Stretchtext replies for Claude Code: short by default, each phrase grows in place when you click it",
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -14,6 +14,12 @@
       "type": "string",
       "title": "Closed stretch highlight",
       "description": "Background of a phrase you can open: a hex colour such as #264f78, in any case, or the word tinted, which highlights each closed stretch in the colour its words take once open, blended 75% into the background. Its text turns near black or near white, whichever reads better. Empty, or anything else, for none.",
+      "default": ""
+    },
+    "palette": {
+      "type": "string",
+      "title": "Stretch colours",
+      "description": "Which colours the words an opened stretch adds, and the tinted highlight, are drawn in: light for a light screen, dark for a dark one, in any case. Empty, or anything else, follows the theme setting: a light or dark theme names its palette. Under any other, such as auto, the words take the theme's own colours and the tinted highlight stays dark.",
       "default": ""
     }
   }

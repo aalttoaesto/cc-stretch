@@ -1,9 +1,9 @@
 # Backlog
 
-Lanes awaiting triage. Verdicts: architect | direct | drop | defer | pending.
-Checkbox marks a lane consumed (plan written, or direct commit landed).
+Tickets awaiting triage. Verdicts: architect | direct | drop | defer | pending.
+Checkbox marks a ticket consumed (plan written, or direct commit landed).
 
-## Lanes
+## Tickets
 
 - [ ] **plugin-folder** — an install copies the plugin, not the repo's dev tools · verdict: direct
 - [x] **renderers-use-drawn-as** — every renderer draws a stretch the way `drawnAs` says · verdict: direct
@@ -15,7 +15,7 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 - [ ] **replay-counts-recomputed** — published replay counts follow the current measurement · verdict: defer · signal: none · promote when: a change to what the skim counts
 - [ ] **nested-key-separator** — no two stretches in a reply share a key · verdict: defer · signal: none · promote when: a stretch opens a different one, or opens in its holder's colour
 - [ ] **old-replies-live** — on Claude Code 2.1.300, a reply from before a style save keeps its stretches · verdict: pending · needs: a live session on Claude Code 2.1.299 or 2.1.300
-- [ ] **theme-read** — stretch colours follow the theme the screen shows · verdict: defer · signal: none · promote when: a reader on a light screen reports dark highlights
+- [ ] **theme-read** — under `auto` or a custom theme, the tinted highlight follows the screen and a stretch opened earlier fades · verdict: defer · signal: none · promote when: Claude Code gives a plugin the theme the screen shows, or a reader under `auto` on a light screen reports dark highlights
 - [ ] **tinted-256** — the four tinted highlights stay four colours on a 256-colour terminal · verdict: defer · signal: none · promote when: a reader reports two tinted stretches in one colour
 - [ ] **tinted-neighbours** — stretches side by side on screen differ in tinted colour · verdict: pending · needs: a design call on whether neighbours on screen must differ
 - [ ] **open-colour-gap** — opened words are in their colour from their first frame · verdict: defer · signal: none · promote when: the gap shows in a recorded take
@@ -37,10 +37,13 @@ Checkbox marks a lane consumed (plan written, or direct commit landed).
 - [ ] **closing-gist-kept** — the closing stretch's short form is in the block it opens · verdict: pending · needs: what the reader sees when such a stretch opens
 - [x] **managed-setup-limit** — the README says Team, Enterprise and managed setups never get the guide · verdict: direct
 - [ ] **desktop-first-request** — the guide reaches the desktop app's first request · verdict: pending · needs: whether a pre-warmed spare's prompt is composed again once the desktop app attaches (debug log of a claimed spare)
-- [ ] **long-session-drift** — a bench task shows whether Claude stops writing stretches deep in a long session · verdict: defer · signal: none · promote when: a second report of stretches stopping in a long session
+- [ ] **long-session-drift** — Claude keeps writing stretches deep in a long session · verdict: defer · signal: `node bench/depth.ts` on a reader's transcripts · promote when: its counts show long replies that were sent the guide going plain
 - [ ] **copy-on-select** — the plugin's selection copies when Claude Code's own would · verdict: pending · needs: a design call on whether a drag or double-click in a paragraph the plugin draws follows "Copy on select"
 - [ ] **windows-link-opener** — on Windows a ctrl- or alt-click on a link in a paragraph that holds a stretch opens it · verdict: pending · needs: a live session on Windows
 - [ ] **desktop-before-2.1.300** — the desktop app on a bundled Claude Code before 2.1.300 shows stretches with 0.5.3 · verdict: pending · needs: a look at the desktop app while it bundles 2.1.295 or 2.1.299
+- [ ] **live-checks-theme** — the live checks pass whatever theme the person has set · verdict: direct
+- [ ] **marks-while-growing** — while a stretch grows or shrinks, no frame draws a mark the finished text hides, or hides one it draws · verdict: defer · signal: none · promote when: a stray backtick, or words drawn italic that finish upright, shows in a recorded take, or a reader reports one
+- [ ] **unpaired-bold** — a `**` with no closing `**` on its line is text · verdict: defer · signal: none · promote when: a reader reports a line gone bold after a `**`
 
 ## plugin-folder
 
@@ -149,22 +152,24 @@ shows its stretches after the save.
 
 ## theme-read
 
-- Problem: `isLight` in `hooks/register.tsx` reads the `theme` row from `$.config.list` and takes
-  any value that does not start with `light` as dark. As of Claude Code 2.1.302 the row holds the
-  setting, so `auto` reads as `auto`, not as the theme it resolves to.
-- Failure sequence: theme `auto` on a light screen, a `custom:<name>` theme, a theme row another
-  plugin hides, or a list that fails. Under tinted, closed stretches sit on the dark palette's
-  near-black highlights (`#403002`, `#2c2240`, `#122623`, `#361e16`), readable with light text but
-  not the pale ones meant for a light screen. Opened words take the dark palette's colours on white,
-  at 1.3–1.9:1 contrast, as they did before 0.5.0.
+- Problem: as of Claude Code 2.1.322 the `theme` row from `$.config.list` holds the setting, and the
+  plugin API has no call for the theme the screen shows. Under a setting that names neither light
+  nor dark (`auto`, a `custom:<name>` theme, a theme row another plugin hides, a list that fails)
+  the hooks module cannot pick a palette, unless the `palette` setting names one
+  ([#24](https://github.com/pro-vi/cc-stretch/issues/24)).
+- Failure sequence: theme `auto` on a light screen, with the tinted highlight. Closed stretches sit
+  on the dark palette's near-black highlights (`#403002`, `#2c2240`, `#122623`, `#361e16`), readable
+  with light text but not the pale ones meant for a light screen. On either screen the opened words
+  are as the README's "Colours for your screen" says: the theme's own colours, none of them faded.
 - The read runs on every draw of a reply that is tinted or has an open stretch. A theme change is
   not one of the render hook's triggers, so a reply keeps its palette until it redraws for another
   reason, and two replies can show two palettes. The read's cost per draw is unmeasured.
 - Signal: none.
-- Promote when: a reader on a light screen reports dark highlights.
-- Fix shape: classify the value explicitly (`light*`, `dark*`, and a stated choice for `auto`,
-  `custom:*` and no row), with tests for a light row, an `auto` row and a failed list. Whether the
-  read can leave the draw depends on Claude Code telling a plugin the theme changed; unchecked.
+- Promote when: Claude Code gives a plugin the theme the screen shows, or a reader under `auto` on
+  a light screen reports dark highlights.
+- Fix shape: none until a plugin can read the theme the screen shows; then the palette follows it.
+  Whether the read can leave the draw depends on Claude Code telling a plugin the theme changed;
+  unchecked.
 
 ## tinted-256
 
@@ -403,26 +408,22 @@ The guide asks for that short form to be "a one-line gist of the block" and for 
 keep its short form's words. Not known: why the words go missing, and what the reader sees when
 such a stretch opens.
 
-## managed-setup-limit
-
-As of Claude Code 2.1.299 to 2.1.303, the built-in plugin `cc-plugin-sec-default` goes before every
-other plugin when the machine has managed settings or a managed MCP server file, or the account is
-on a Team or Enterprise plan, and skips the `prompt.compose` and `classic.*` hooks of plugins a
-person installed. cc-stretch adds its guide in `prompt.compose`, so Claude never writes a stretch
-there. A debug log in [#3](https://github.com/pro-vi/cc-stretch/issues/3) shows `prompt.compose
-bypassed by cc-plugin-sec-default (tier user)`, and `claude plugin validate .` warns that "only a
-plugin the organization lists in managed settings runs them". The README's Limits does not say so,
-and #3 has no reply naming the cause. Sending the guide another way, such as in the per-prompt note,
-would get around a security control on purpose, so it is not the fix.
-
 ## desktop-first-request
 
 A report in [#3](https://github.com/pro-vi/cc-stretch/issues/3) guesses that the desktop app gets
-no guide because it has not connected by the first request. As of Claude Code 2.1.303, the guide
-hook sees the terminal and any remote app that has announced itself, and the desktop app announces
-itself with a `ui_attach` message; whether that arrives before the first request is not checked. In
-one desktop-app session on 2.1.295, all three long replies had stretches. A Team or Enterprise
-account would explain the report as well (`managed-setup-limit`).
+no guide because it has not connected by the first request. Checked on Claude Code 2.1.322 in a
+`claude -p` session fed stream-json, which the report says is how the desktop app runs Claude Code,
+with a `ui_attach` sent as a control request:
+
+- The system prompt is composed again for every prompt, before `prompt.submit`.
+- With no client attached it holds no guide, whatever `CLAUDE_CODE_ENTRYPOINT` says.
+- A client attached before the first prompt gets the guide in the first request. One attached after
+  it gets the guide from the next prompt on.
+
+So there, at worst, the first reply comes without stretches. Not checked: when the desktop app
+sends its `ui_attach`; the app at 4.4212.0 holds code that sends one. In one desktop-app session on
+2.1.295, all three long replies had stretches. A Team or Enterprise account would explain the
+report as well (README, Limits).
 
 Seen on 2026-11-05 with the desktop app bundling Claude Code 2.1.317, cc-stretch 0.5.4 listed in
 managed settings and admitted: a session got no guide on any of its turns, yet its replies drew
@@ -441,9 +442,19 @@ set `CLAUDE_CODE_DEBUG_LOGS_DIR` for the desktop app and look for `ui_attach` an
 ## long-session-drift
 
 A report in [#3](https://github.com/pro-vi/cc-stretch/issues/3) says that deep in a long session
-Claude stops writing stretches, from one or two runs per setup. The guide and the per-prompt note
-are unchanged since, and the note says nothing after a reply with no stretches. The 24 tasks each
-ask one fresh question, so they cannot show it.
+Claude stops writing stretches, from one or two runs per setup, and proposes a reminder beside the
+prompt after a reply with none. `bench/depth.ts` counts it from transcripts. On 667 transcripts of
+mine (Claude Code 2.1.300 to 2.1.322, nearly all Opus 5.5):
+
+- 1,137 of 1,171 long replies whose request carried the guide hold a stretch (97%): 92 of 92 under
+  100k context tokens, 319 of 342 at 400k and over (93%).
+- After a plain long reply, the next long one holds a stretch 18 times of 26.
+- 5 of 2,832 long replies whose request carried no guide hold one. Those are sessions run headless
+  or without the plugin; a count that does not read the request takes them for sessions where
+  Claude stopped.
+
+So no reminder is added. Not checked: a terse output style, which the report's sessions may have
+used; the guide bullet it proposes names one.
 
 ## copy-on-select
 
@@ -464,3 +475,40 @@ the live check runs on macOS, so neither the choice nor the command has run on W
 From 0.5.3 the hooks module loads in Claude Code 2.1.293 and 2.1.295, checked with `claude -p`
 ([#17](https://github.com/pro-vi/cc-stretch/issues/17)). Whether the desktop app with such a
 version then shows stretches is not checked; `desktop-first-request` holds one reason it might not.
+
+## live-checks-theme
+
+The checks in `film/e2e/` start each session under the person's own theme setting and compare
+colours with fixed values. `SOFT` in `film/e2e/tinted.mjs` holds the dark palette's, so since opened
+words take the theme's own colours under a setting that names no palette, its step that opens a
+stretch fails under `auto`. `LINK_FG` in `film/e2e/live.mjs` is `rgb(153,204,255)`, which Claude Code
+2.1.322 draws for `suggestion` under `dark-daltonized`; under `dark` it draws `rgb(177,185,249)`. Fix
+shape: add one `theme` to the `--settings` JSON `live.mjs` starts every session with, and write each
+expected colour for that theme.
+
+## marks-while-growing
+
+A long form's words arrive a few at a time, so a frame can hold half of a pair of marks. Each case
+below was seen in the frames `grow` and `layout` give for it, not in a take.
+
+- A code span whose closing backtick has not arrived draws its opening backtick: `npm run test`
+  shows a backtick before `npm` until `test` arrives.
+- In arriving text, `inline` in `hooks/layout.ts` hides an opening `*` or `_` that has met no closing
+  mark and draws the arriving text after it italic, so `_two words_` grows without its marks. An
+  unpaired mark in the long form pays for it: in `Short, with a lone _id per run.` the `_` is hidden
+  and `id per` is italic until the last frame, where the `_` appears and the words after it move a
+  cell.
+- A closing mark that arrives before its opening one is drawn: the words before the first anchor
+  arrive last word first, so `Run _the whole test_ now.` grown from `now.` shows `test_` until
+  `_the` arrives.
+- Fix shape: `grow` in `hooks/grow.ts` pairs the marks on the whole long form and shows each word in
+  the style it has there. `asArriving` in `hooks/layout.ts` then goes.
+
+## unpaired-bold
+
+`inline` in `hooks/layout.ts` toggles bold at every `**`, closed or not, so a `**` with no partner
+(`**kwargs`, `2 ** 3`, `**/*.ts`) is not drawn and the rest of its line is bold. Italics were read
+the same way until they were made to wait for their closing mark
+([#23](https://github.com/pro-vi/cc-stretch/issues/23)). Bold was left alone because a
+`**bold phrase**` whose last word has yet to arrive in a growing stretch would otherwise show its
+`**`; the fix for `marks-while-growing` removes that reason.

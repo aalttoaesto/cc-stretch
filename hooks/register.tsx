@@ -39,13 +39,21 @@ const FULLSCREEN_HOW = 'run /tui fullscreen. If it says fullscreen is already on
 const MAIN_SCREEN_NOTE =
   "cc-stretch: stretches are open because this session is on Claude Code's main screen, where a printed reply cannot change. " +
   `For clickable stretches, ${FULLSCREEN_HOW}`
+// As of Claude Code 2.1.322 its built-in plugin cc-plugin-sec-default, seated on a machine with
+// managed settings and for a Team or Enterprise account, sends prompt.compose and classic.* past the
+// hooks of every plugin a person installs, so the guide is never added and Claude writes no stretch.
+const GUIDE_SKIPPED_NOTE =
+  'cc-stretch: Claude Code has not asked this plugin for its writing guide, so Claude is not told to write stretches. ' +
+  'Claude Code skips that step for the plugins a person installs on a machine with managed settings and on a Team or Enterprise account. ' +
+  "Only the organization's administrator can change that, in its managed settings."
 
-// The words a stretch adds are drawn in Claude Code's own theme colours (its 2.1.300 values for
-// warning, autoAccept, planMode and claude), mixed 45% toward the text colour so they tint rather
-// than shout. Each open stretch keeps its colour; all but the newest take a faded form of it, mixed
-// 35% toward the background, quieter but still that colour. In the tinted highlight a closed stretch
-// sits on the same theme colour mixed 75% toward the background, deep on the dark theme and pale on the
-// light one; on both, the text contrastOn picks reads at 10:1 or more.
+// Where the palette setting or the theme setting names a palette, the words a stretch adds are drawn
+// in Claude Code's own theme colours (its 2.1.300 values for warning, autoAccept, planMode and
+// claude), mixed 45% toward the text colour so they tint rather than shout. Each open stretch keeps
+// its colour; all but the newest take a faded form of it, mixed 35% toward the background, quieter
+// but still that colour. In the tinted highlight a closed stretch sits on the same theme colour mixed
+// 75% toward the background, deep on the dark theme and pale on the light one; on both, the text
+// contrastOn picks reads at 10:1 or more. Where neither setting names a palette, THEME_COLOURS below.
 const BASE: Record<'dark' | 'light', readonly [Rgb, Rgb, Rgb, Rgb]> = {
   dark: [[255, 193, 7], [175, 135, 255], [72, 150, 140], [215, 119, 87]],
   light: [[150, 108, 30], [135, 0, 255], [0, 102, 102], [215, 119, 87]],
@@ -58,8 +66,32 @@ const paletteOf = (base: readonly Rgb[], text: Rgb, background: Rgb) =>
     return { soft: hex(soft), faded: hex(mix(soft, background, 0.35)), highlight: hex(mix(rgb, background, 0.75)) }
   })
 const PALETTES = { dark: paletteOf(BASE.dark, WHITE, BLACK), light: paletteOf(BASE.light, BLACK, WHITE) }
+/**
+ * The `palette` setting: `light` or `dark`, in any case, picks that palette whatever the theme setting
+ * says; anything else is '', which follows the theme setting.
+ */
+const forcedPaletteOf = (value: unknown): keyof typeof PALETTES | '' => {
+  const name = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  return name === 'light' || name === 'dark' ? name : ''
+}
+/**
+ * The palette Claude Code's theme setting names by how its name starts, or '' when it names neither:
+ * `auto`, a custom theme, no theme row, or a settings list that fails. As of Claude Code 2.1.322 a
+ * plugin reads the setting, not the theme the screen shows, so under those it cannot tell a light
+ * screen from a dark one.
+ */
+async function themePaletteOf($: EngineInterface): Promise<keyof typeof PALETTES | ''> {
+  const theme = String((await $.config.list().catch(() => [])).find(row => row.key === 'theme')?.value)
+  return theme.startsWith('light') ? 'light' : theme.startsWith('dark') ? 'dark' : ''
+}
 /** How many colours stretches take in turn. */
 const HUES = BASE.dark.length
+/**
+ * The colours an open stretch's words take where no palette is named: the theme's own, by their keys
+ * in BASE's order, which as of Claude Code 2.1.322 it draws for the theme the screen shows. A key
+ * cannot be mixed, so there no open stretch fades.
+ */
+const THEME_COLOURS = (['warning', 'autoAccept', 'planMode', 'claude'] as const satisfies { length: typeof HUES }).map(key => ({ soft: key, faded: key }))
 /** `count`, or the next count when `count` would give the colour of the stretch holding it, whose count is `parent`. */
 const hueAfter = (count: number, parent: number | undefined) => (parent !== undefined && count % HUES === parent % HUES ? count + 1 : count)
 /** The colours (a palette entry) a count or a place picks, taken in turn. */
@@ -275,6 +307,7 @@ async function follow($: EngineInterface, href: string): Promise<void> {
 
 export const register: Register = (on, options) => {
   const baseLook = lookOf(options)
+  const forcedPalette = forcedPaletteOf(options.palette)
   // As of Claude Code 2.1.302, /cc-stretch:style is listed from commands/style.md and answered here;
   // Claude reads the file only when the hooks did not answer. It only shows the toolbar: the band
   // above the prompt has its own [-], which collapses it without the plugin knowing, so a toggle could
@@ -393,7 +426,16 @@ export const register: Register = (on, options) => {
     return flush
   })
 
+  // Whether this load of the plugin still waits for Claude Code to ask for the guide, until it asks
+  // or the reader is told it has not; and the reply that stood last when a prompt from the composer
+  // last passed, undefined before the first. As of Claude Code 2.1.322 the system prompt is composed
+  // again for every prompt, after prompt.submit in the terminal and before it in a stream-json
+  // session. So a reply that has come since such a prompt, with the wait still on, was written
+  // without the guide. Kept here, not in plugin state, so that each load starts the wait over.
+  let isAwaitingGuideAsk = true
+  let replyAtPrompt: string | undefined
   on('prompt.compose', async ($, e, next) => {
+    isAwaitingGuideAsk = false
     const composed = await next(e)
     if (e.surfaces.length === 0) return composed
 
@@ -409,9 +451,10 @@ export const register: Register = (on, options) => {
     if (e.origin.kind !== 'composer') return next(e)
 
     const opened = await read($, seen)
+    const reply = lastReply(await $.session.messages())
     // A stretch that is not a link is drawn open, so it is neither opened nor unopened. Each is named
     // as its paragraph draws it, where a lone period is named with the words before it.
-    const written = paragraphsOf(lastReply(await $.session.messages()))
+    const written = paragraphsOf(reply)
       .filter(paragraph => paragraph.hasStretch)
       .flatMap(({ text }) => {
         const parts = parse(text)
@@ -424,6 +467,13 @@ export const register: Register = (on, options) => {
     await update($, seen, () => [])
     await update($, newestReply, () => '')
     await update($, lettering, () => null)
+    // Said once, in a dim line of the transcript that is not sent to Claude (`$.ui.log`, by the plugin
+    // API types that Claude Code 2.1.294 and 2.1.302 wrote).
+    if (isAwaitingGuideAsk && replyAtPrompt !== undefined && reply !== '' && reply !== replyAtPrompt) {
+      isAwaitingGuideAsk = false
+      $.ui.log(GUIDE_SKIPPED_NOTE)
+    }
+    replyAtPrompt = reply
     if (opened.length === 0 && unopened.length === 0) return next(e)
 
     const quote = (list: OpenedStretch[]) => list.map(stretch => `"${stretch.name}"`).join(', ')
@@ -498,10 +548,13 @@ export const register: Register = (on, options) => {
       const look = storedLook(picked) ?? baseLook
       const isTinted = look.highlight === TINTED
       // The theme matters only once a stretch in this reply is drawn in its colour: open, or with the tinted highlight.
-      const isLight =
-        (isTinted || Object.keys(order).length > 0) &&
-        (await $.config.list().catch(() => [])).some(row => row.key === 'theme' && String(row.value).startsWith('light'))
-      const palette = isLight ? PALETTES.light : PALETTES.dark
+      const isColoured = isTinted || Object.keys(order).length > 0
+      // The palette setting, when it names one, wins over the theme setting.
+      const named = forcedPalette !== '' ? forcedPalette : isColoured ? await themePaletteOf($) : ''
+      // Where neither names a palette, the words take the theme's own colours. A highlight there stays
+      // the dark palette's: its text is picked to read on it, whatever the screen.
+      const palette = PALETTES[named === '' ? 'dark' : named]
+      const wordColours = named === '' ? THEME_COLOURS : palette
       const paragraphs = paragraphsOf(text).map((paragraph, i) => ({ ...paragraph, key: `paragraph-${i}`, member: `${e.requestId}#paragraph-${i}` }))
       const holding = paragraphs.filter(p => p.hasStretch)
       const places = isTinted ? placesOf(holding) : undefined
@@ -514,7 +567,7 @@ export const register: Register = (on, options) => {
           if (!hasStretch) return <Markdown text={text} />
           const [open, ask] = await Promise.all([read($, memberOf(openStretches, { requestId: member })), read($, memberOf(askedStretch, { requestId: member }))])
           const placed = places?.get(key)
-          const tints = tintsOf(order, key, newest === e.requestId ? count - 1 : -1, palette, placed)
+          const tints = tintsOf(order, key, newest === e.requestId ? count - 1 : -1, wordColours, placed)
           const keys = Object.fromEntries((shown?.targets ?? []).filter(one => one.member === member).map(one => [one.key, one.letter]))
           const props: ReplyProps = {
             text,

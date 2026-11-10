@@ -120,6 +120,14 @@ running as you can rewrite code that runs ahead of the guard.
 plugin as a personal one, so the guard skips its prompt hooks and replies look broken. Use it for
 types, never to judge whether stretches work.
 
+## CI
+
+`.github/workflows/checks.yml` runs `npm test` (validate + plugin tests) and the bench typecheck on
+every push, against the Claude Code version the desktop app bundles (blocking) and the newest one
+(warning only), plus weekly on Mondays. Deploy to `/opt` only from a commit whose run is green. A new
+way the plugin breaks gets a test in `tests/` first, as `8f5b49d` did for desktop spares, so CI
+catches it next time.
+
 ## Updating from upstream
 
 Review the changes first, then deploy as above and run `claude plugin validate`. The plugin never

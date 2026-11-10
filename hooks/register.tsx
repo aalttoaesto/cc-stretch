@@ -437,7 +437,11 @@ export const register: Register = (on, options) => {
   on('prompt.compose', async ($, e, next) => {
     isAwaitingGuideAsk = false
     const composed = await next(e)
-    if (e.surfaces.length === 0) return composed
+    // The Claude desktop app (as of Claude Code 2.1.321, desktop 4.23118) starts a spare session
+    // ahead of time and attaches to it only once someone opens it, so the session's system prompt is
+    // rendered while nothing draws yet. The app will draw its replies, so it gets the guide too.
+    const isDrawnLater = e.surfaces.length === 0 && (await $.env.get('CLAUDE_CODE_ENTRYPOINT')) === 'claude-desktop'
+    if (e.surfaces.length === 0 && !isDrawnLater) return composed
 
     return {
       sections: [

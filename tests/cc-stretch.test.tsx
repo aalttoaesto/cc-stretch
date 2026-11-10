@@ -1665,9 +1665,24 @@ test('a stretch still streaming shows its short form and none of its markup', as
 })
 
 test('the system prompt carries the guide while something draws', async ($, on) => {
+  mock.env(on, {})
   on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'You are Claude Code.', scope: 'shared' }] }))
   const drawn = await $.prompt.compose({ ...COMPOSE, surfaces: ['terminal'] })
   expect(drawn.sections.at(-1)?.id).toBe('cc-stretch:guide')
+  const headless = await $.prompt.compose({ ...COMPOSE, surfaces: [] })
+  expect(headless.sections.some(s => s.id === 'cc-stretch:guide')).toBe(false)
+})
+
+test('a session the desktop app starts before it attaches still carries the guide', async ($, on) => {
+  mock.env(on, { CLAUDE_CODE_ENTRYPOINT: 'claude-desktop' })
+  on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'You are Claude Code.', scope: 'shared' }] }))
+  const spare = await $.prompt.compose({ ...COMPOSE, surfaces: [] })
+  expect(spare.sections.at(-1)?.id).toBe('cc-stretch:guide')
+})
+
+test('a headless run from another entrypoint carries no guide', async ($, on) => {
+  mock.env(on, { CLAUDE_CODE_ENTRYPOINT: 'sdk-cli' })
+  on('prompt.compose', () => ({ sections: [] }))
   const headless = await $.prompt.compose({ ...COMPOSE, surfaces: [] })
   expect(headless.sections.some(s => s.id === 'cc-stretch:guide')).toBe(false)
 })

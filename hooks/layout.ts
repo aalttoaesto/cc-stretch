@@ -40,15 +40,20 @@ export function continuationOf(row: Row): Continuation | undefined {
   return continuations.get(row)
 }
 
-// Noncharacters frame a pressable phrase or a tinted word in composed text: Unicode keeps them for a
-// program's own use, where the Private Use Area holds icons such as Nerd Font's. A start mark with no
-// separator after it is read as a character, so a stray one still lets its line be laid out.
+// Noncharacters frame a pressable phrase, a tinted word or an arriving word in composed text: Unicode
+// keeps them for a program's own use, where the Private Use Area holds icons such as Nerd Font's. A
+// start mark with no separator after it is read as a character, so a stray one still lets its line
+// be laid out.
 const START = '\ufdd0'
 const SEP = '\ufdd1'
 const END = '\ufdd2'
 const PHRASE_MARK = /[\ufdd0-\ufdd2]/
+/** What a pressable phrase adds around its label, none of it drawn: its start with the action and key it carries, and its end. For `replace`. */
+const PHRASE_FRAME = new RegExp(`${START}[^${SEP}]*${SEP}[^${SEP}]*${SEP}|${END}`, 'g')
 const TINT = '\ufdd3'
 const TINT_END = '\ufdd4'
+const ARRIVING = '\ufdd5'
+const ARRIVING_END = '\ufdd6'
 
 // A mark drawn on the letter before it, or a character no terminal draws, takes no cell.
 const ZERO_WIDTH = /[\p{Mn}\p{Me}\p{Default_Ignorable_Code_Point}]/u
@@ -75,12 +80,23 @@ export const HEADING = /^#{1,6}\s+(.*)$/
 export const QUOTE = /^>\s?(.*)$/
 export const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/
 
-/** A line's text without its tint marks, and the tint of each character left. */
-type Line = { text: string; tints: (string | undefined)[] }
+/** A line's text without its tint and arriving marks, with each remaining character's tint and whether it is arriving. */
+type Line = { text: string; tints: (string | undefined)[]; arriving: boolean[] }
 
 /** `word` drawn in `colour`. */
 export function tint(colour: string, word: string): string {
   return `${TINT}${colour}${SEP}${word}${TINT_END}`
+}
+
+/**
+ * `text` as what a growing or shrinking long form shows at one frame, marked as arriving line by line.
+ * A `*` or `_` in it that opens italics and meets no closing mark is then not drawn, and the rest of
+ * the arriving text on its line is italic: its closing mark may be in a word not shown at this frame.
+ * A rule or a fence line stays bare, since `closeAfter` reads a long form's last line for one.
+ */
+export function asArriving(text: string): string {
+  const isBare = (line: string) => isRule(line) || openingFence(line) !== undefined
+  return text.split('\n').map(line => (isBare(line) ? line : `${ARRIVING}${line}${ARRIVING_END}`)).join('\n')
 }
 
 /** Whether a word is markdown syntax rather than text: a bullet, a list number, a rule, a fence, a pipe, a heading mark. */
@@ -383,7 +399,7 @@ export function layout(text: string, columns: number): Row[] {
   const rows: Row[] = []
   let fence: string | undefined
   for (const marked of text.split('\n')) {
-    const line = untint(marked)
+    const line = lineOf(marked)
     if (fence !== undefined) {
       if (closesFence(line.text, fence)) fence = undefined
       else rows.push(...cutRows([{ text: `  ${line.text}`, code: true }], width))
@@ -497,14 +513,16 @@ export function breakables(text: string): string[] {
 }
 
 /**
- * A line without its tint marks, so its markdown is read from the text alone: a stretch tints the
- * words it adds one at a time, so a code span or a link label can hold several. A space takes the
- * tint before it, so a tinted phrase stays one run.
+ * A line without its tint and arriving marks, so its markdown is read from the text alone: a stretch
+ * tints the words it adds one at a time, so a code span or a link label can hold several. A space
+ * takes the tint before it, so a tinted phrase stays one run.
  */
-function untint(marked: string): Line {
+function lineOf(marked: string): Line {
   let text = ''
   const tints: Line['tints'] = []
+  const arriving: Line['arriving'] = []
   let tinted: string | undefined
+  let isArriving = false
   for (let i = 0; i < marked.length; i++) {
     const ch = marked[i] ?? ''
     const sep = ch === TINT ? marked.indexOf(SEP, i + 1) : -1
@@ -513,18 +531,24 @@ function untint(marked: string): Line {
       i = sep
     } else if (ch === TINT_END) {
       tinted = undefined
+    } else if (ch === ARRIVING || ch === ARRIVING_END) {
+      isArriving = ch === ARRIVING
     } else {
       tints.push(ch === ' ' && tinted === undefined ? tints.at(-1) : tinted)
+      arriving.push(isArriving)
       text += ch
     }
   }
 
-  return { text, tints }
+  return { text, tints, arriving }
 }
 
-function rowsOf({ text: line, tints }: Line, width: number): Row[] {
+function rowsOf({ text: line, tints, arriving }: Line, width: number): Row[] {
   // The runs of the line's end from `rest` on.
-  const inlineOf = (rest: string, isBold = false) => inline(rest, tints.slice(line.length - rest.length), isBold)
+  const inlineOf = (rest: string, isBold = false) => {
+    const from = line.length - rest.length
+    return inline({ text: rest, tints: tints.slice(from), arriving: arriving.slice(from) }, isBold)
+  }
   if (line.trim() === '') return [[]]
   if (isRule(line)) return [[{ text: '─'.repeat(Math.min(width, 60)), dim: true }]]
   // A table row keeps its columns: written as is, cut where the region ends.
@@ -543,30 +567,82 @@ function rowsOf({ text: line, tints }: Line, width: number): Row[] {
   return wrap(inlineOf(line.slice(indent.length)), width, indent, indent)
 }
 
-/** A line's inline markdown as runs: bold, italic, code spans, links, pressable phrases, each character in its tint. */
-function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
+/**
+ * The characters drawn just before and just after the one at `at`: a pressable phrase's frame is
+ * passed over, and a character that takes two code units is given whole. A space where the line
+ * starts or ends.
+ */
+function beside(text: string, at: number): [before: string, after: string] {
+  // A frame stands between the character and its neighbour only when it touches the character, and
+  // each of its ends is a phrase mark; otherwise two code units a side hold the neighbour whole.
+  const isFramed = PHRASE_MARK.test(text.slice(Math.max(0, at - 1), at + 2))
+  const [from, to] = isFramed ? [0, text.length] : [Math.max(0, at - 2), at + 3]
+  const drawn = (part: string) => part.replace(PHRASE_FRAME, '')
+  return [/.$/su.exec(drawn(text.slice(from, at)))?.[0] ?? ' ', /^./su.exec(drawn(text.slice(at + 1, to)))?.[0] ?? ' ']
+}
+
+/**
+ * Whether the `*` or `_` at `at` can open italics, and whether it can close them: the character after
+ * an opening mark, or before a closing one, is not white space. A `_` also has no letter or digit on
+ * its other side and no `_` beside it, so `snake_case` and `__init__` stay as written.
+ */
+function italicsAt(text: string, at: number): { canOpen: boolean; canClose: boolean } {
+  const [before, after] = beside(text, at)
+  const isAlone = before !== '_' && after !== '_'
+  const marks = (inner: string, outer: string) => /\S/.test(inner) && (text[at] === '*' || (isAlone && !HAS_WORDS.test(outer)))
+  return { canOpen: marks(after, before), canClose: marks(before, after) }
+}
+
+/**
+ * A line's inline markdown as runs: bold, italic, code spans, links, pressable phrases, each character
+ * in its tint. Italics run from a `*` or `_` to the nearest closing mark of its kind. An opening mark
+ * that meets no closing mark on the line is text, unless it is arriving. Bold toggles at every `**`,
+ * closed or not.
+ */
+function inline({ text, tints, arriving }: Line, isBold: boolean): Run[] {
   const runs: Run[] = []
+  // The opening marks that have met no closing mark yet, outermost first: each the run it is drawn as,
+  // since it is text until its closing mark is met. And those of them that are arriving.
+  const openMarks: Run[] = []
+  const arrivingMarks = new Set<Run>()
   let bold = isBold
-  let italic = false
   let pressable: Run['link']
-  // `chunk` starts at character `at`, and takes its tint.
-  const emit = (chunk: string, at: number, extra: Omit<Run, 'text'> = {}) => {
-    if (chunk === '') return
+  // `chunk`, which starts at character `at`, in its tint and the styles in force.
+  const runOf = (chunk: string, at: number, extra: Omit<Run, 'text'> = {}): Run => {
     const tint = tints[at]
-    const run: Run = {
+    return {
       text: chunk,
       ...(bold && { bold: true }),
-      ...(italic && { italic: true }),
       ...(tint && { tint }),
       ...(pressable && { link: pressable }),
       ...extra,
     }
+  }
+  const emit = (chunk: string, at: number, extra: Omit<Run, 'text'> = {}) => {
+    if (chunk === '') return
+    const run = runOf(chunk, at, extra)
     const last = runs.at(-1)
-    if (last !== undefined && isSameStyle(last, run)) last.text += chunk
+    // An open mark stays a run of its own, to be taken out if its closing mark is met.
+    if (last !== undefined && !openMarks.includes(last) && isSameStyle(last, run)) last.text += chunk
     else runs.push(run)
+  }
+  // `mark` met its closing mark: what follows it is italic, and it is not drawn.
+  const italicise = (mark: Run) => {
+    const at = runs.indexOf(mark)
+    for (const run of runs.slice(at + 1)) run.italic = true
+    runs.splice(at, 1)
+  }
+  // Arriving text ends: a mark of its own still open is taken to have met its closing mark, which may
+  // be in a word not shown at this frame.
+  const closeArriving = () => {
+    for (const mark of openMarks.filter(mark => arrivingMarks.has(mark))) {
+      italicise(mark)
+      openMarks.splice(openMarks.indexOf(mark), 1)
+    }
   }
 
   for (let i = 0; i < text.length; ) {
+    if (arriving[i - 1] && !arriving[i]) closeArriving()
     const ch = text[i] ?? ''
     const first = ch === START ? text.indexOf(SEP, i + 1) : -1
     const second = first === -1 ? -1 : text.indexOf(SEP, first + 1)
@@ -597,10 +673,25 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
       i += 2
       continue
     }
-    if (ch === '*' && /\S/.test((italic ? text[i - 1] : text[i + 1]) ?? ' ')) {
-      italic = !italic
-      i += 1
-      continue
+    if (ch === '*' || ch === '_') {
+      const { canOpen, canClose } = italicsAt(text, i)
+      const nearest = openMarks.findLastIndex(mark => mark.text === ch)
+      const isClosing = nearest !== -1 && canClose
+      if (isClosing || canOpen) {
+        // A mark that can close the nearest open mark of its kind does. Any other mark that can open
+        // takes that one's place. Either way that mark is open no longer, nor is any opened after it:
+        // unless this one closed it, it met no closing mark and stays text.
+        const [opening] = nearest === -1 ? [] : openMarks.splice(nearest)
+        if (isClosing && opening !== undefined) italicise(opening)
+        else {
+          const mark = runOf(ch, i)
+          runs.push(mark)
+          openMarks.push(mark)
+          if (arriving[i]) arrivingMarks.add(mark)
+        }
+        i += 1
+        continue
+      }
     }
     const markdownLink = /^\[([^\]\n\ufdd0-\ufdd2]+)\]\(([^)\s]+)\)/.exec(text.slice(i))
     if (markdownLink) {
@@ -614,7 +705,7 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
       i += markdownLink[0].length
       continue
     }
-    const url = ch === 'h' && !/\w/.test(text[i - 1] ?? ' ') ? bareUrlAt(text, i) : undefined
+    const url = ch === 'h' && !/[^\W_]/.test(text[i - 1] ?? ' ') ? bareUrlAt(text, i) : undefined
     if (url !== undefined) {
       for (let k = 0; k < url.length; k++) emit(url[k] ?? '', i + k, { href: url })
       i += url.length
@@ -623,8 +714,16 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
     emit(ch, i)
     i += 1
   }
+  closeArriving()
+  // A mark that stayed text joins the text around it.
+  const joined: Run[] = []
+  for (const run of runs) {
+    const last = joined.at(-1)
+    if (last !== undefined && isSameStyle(last, run)) last.text += run.text
+    else joined.push(run)
+  }
 
-  return runs
+  return joined
 }
 
 /**
@@ -632,7 +731,7 @@ function inline(text: string, tints: Line['tints'], isBold = false): Run[] {
  * or a closing bracket it did not open.
  */
 function bareUrlAt(text: string, at: number): string | undefined {
-  let url = /^https?:\/\/[^\s<>`﷐-﷔]+/.exec(text.slice(at))?.[0]
+  let url = /^https?:\/\/[^\s<>`\ufdd0-\ufdd2]+/.exec(text.slice(at))?.[0]
   if (url === undefined) return undefined
   for (;;) {
     const opened = url.split('(').length - 1

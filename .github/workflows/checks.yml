@@ -1,0 +1,66 @@
+name: checks
+
+# Runs the plugin's checks (CLAUDE.md, "Checks") on every push and pull request, so a change that
+# drops the guide or breaks how a stretch is drawn fails before anyone deploys it to /opt/esto.
+# `claude plugin validate` and `claude plugin test` need no sign-in (checked with Claude Code 2.1.321
+# and 2.1.322 under an empty HOME).
+
+on:
+  # Every branch: a pull request in this repo shows the run for its head commit.
+  push:
+  workflow_dispatch:
+  schedule:
+    # Mondays 06:00 UTC: catches a new Claude Code release that breaks the plugin API before the
+    # desktop app ships it.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  plugin:
+    name: plugin (Claude Code ${{ matrix.claude-code }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The version the Claude desktop app bundles (desktop 4.23118, November 2026). Bump it
+          # when the app moves on; this one blocks a merge.
+          - claude-code: 2.1.321
+            required: true
+          # The newest release: an early warning, not a merge gate.
+          - claude-code: latest
+            required: false
+    continue-on-error: ${{ !matrix.required }}
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      DISABLE_AUTOUPDATER: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dev tools
+        run: npm ci
+
+      - name: Install Claude Code ${{ matrix.claude-code }}
+        run: |
+          npm install -g @anthropic-ai/claude-code@${{ matrix.claude-code }}
+          claude --version
+
+      # A copy of the plugin or a probe named *.test.ts(x) anywhere in the folder runs under
+      # `claude plugin test` (CLAUDE.md), so fail loudly on one outside tests/.
+      - name: No stray test files
+        run: |
+          stray=$(git ls-files '*.test.ts' '*.test.tsx' | grep -v '^tests/' || true)
+          if [ -n "$stray" ]; then echo "Test files outside tests/:"; echo "$stray"; exit 1; fi
+
+      - name: Validate and test the plugin
+        run: npm test
+
+      - name: Typecheck the bench
+        run: npm run typecheck
